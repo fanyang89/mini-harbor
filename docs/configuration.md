@@ -2,10 +2,11 @@
 
 [Home](../README.md) · [Getting started](getting-started.md)
 
-Set Compose variables in `.env` beside `compose.yml`, then apply changes with `docker compose up -d --build`. Keep credentials out of version control.
+Set Compose variables in `.env` beside `compose.yml`, then apply changes with `docker compose up -d --no-build`. Keep credentials out of version control.
 
 | Variable | Default | Description |
 | --- | --- | --- |
+| `MINI_HARBOR_IMAGE` | `ghcr.io/fanyang89/mini-harbor:latest` | Application image; accepts a commit tag or digest for pinning |
 | `WEB_PORT` | `8080` | Web console host port |
 | `REGISTRY_PORT` | `5000` | Registry host port |
 | `REGISTRY_PUBLIC_URL` | `localhost:5000` | Registry address shown in pull commands |
@@ -31,7 +32,7 @@ Set Compose variables in `.env` beside `compose.yml`, then apply changes with `d
 Example:
 
 ```bash
-REGISTRY_PUBLIC_URL=registry.example.com docker compose up -d --build
+REGISTRY_PUBLIC_URL=registry.example.com docker compose up -d --no-build
 ```
 
 ## Persistent storage

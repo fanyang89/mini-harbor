@@ -24,7 +24,8 @@ Install Git, Docker, and Docker Compose, then:
 ```bash
 git clone https://github.com/fanyang89/mini-harbor.git
 cd mini-harbor
-docker compose up -d --build
+docker compose pull
+docker compose up -d --no-build
 ```
 
 Open http://localhost:8080. Push your first image:

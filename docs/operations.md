@@ -10,12 +10,15 @@ Run these commands from the repository root:
 # Stop the stack, keeping its data volumes.
 docker compose down
 
-# Update the source and rebuild.
+# Update the configuration and pull published images.
 git pull --ff-only
-docker compose up -d --build
+docker compose pull
+docker compose up -d --no-build
 ```
 
 Back up the persistent volumes before updating. Avoid `docker compose down -v` unless you intend to delete the registry, cache, and metadata volumes.
+
+`latest` follows tested builds of `main`. Pin `MINI_HARBOR_IMAGE` to `ghcr.io/fanyang89/mini-harbor:sha-<full-commit-sha>` or a digest when you need a fixed application version. Update that value when upgrading. If you build from source, use `MINI_HARBOR_IMAGE=mini-harbor:local docker compose up -d --build` instead of pulling the application image.
 
 ## Backups
 

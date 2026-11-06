@@ -22,7 +22,7 @@ services:
       start_period: 5s
 
   registry-gateway:
-    image: mini-harbor:local
+    image: ${MINI_HARBOR_IMAGE:-ghcr.io/fanyang89/mini-harbor:latest}
     build: *app-build
     restart: unless-stopped
     entrypoint: ["mini-harbor-gateway"]
@@ -57,7 +57,7 @@ services:
       start_period: 10s
 
   web:
-    image: mini-harbor:local
+    image: ${MINI_HARBOR_IMAGE:-ghcr.io/fanyang89/mini-harbor:latest}
     build: *app-build
     restart: unless-stopped
     environment:

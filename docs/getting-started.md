@@ -4,15 +4,24 @@
 
 ## Install
 
-You need Git, Docker, and Docker Compose. Go and Node.js build tools run inside Docker; they are not required on the host.
+You need Git, Docker, and Docker Compose. Prebuilt images support Linux `amd64` and `arm64`; Go and Node.js are not required on the host.
 
 ```bash
 git clone https://github.com/fanyang89/mini-harbor.git
 cd mini-harbor
-docker compose up -d --build
+docker compose pull
+docker compose up -d --no-build
 ```
 
 Open http://localhost:8080 to browse your images. Push and pull through `localhost:5000`.
+
+The application image is `ghcr.io/fanyang89/mini-harbor:latest`. Each published main-branch commit also has a `sha-<full-commit-sha>` tag. To pin a version, set `MINI_HARBOR_IMAGE` in `.env` to that tag or an image digest.
+
+To build from source instead:
+
+```bash
+MINI_HARBOR_IMAGE=mini-harbor:local docker compose up -d --build
+```
 
 The default configuration is for a trusted local network. Management operations are unauthenticated until OIDC is enabled; the Registry port needs separate access controls. See [authentication](authentication.md) before exposing the service.
 
@@ -36,7 +45,7 @@ Use `docker.io/` or `ghcr.io/` before the upstream image name. Docker Hub offici
 
 ## Use another port or hostname
 
-Set these values in a `.env` file beside `compose.yml`, then run `docker compose up -d --build` again:
+Set these values in a `.env` file beside `compose.yml`, then run `docker compose up -d --no-build` again:
 
 ```dotenv
 WEB_PORT=8080

@@ -37,7 +37,7 @@ Generate a session secret with `openssl rand -base64 32`. Supply a client secret
 Apply the settings:
 
 ```bash
-docker compose up -d --build
+docker compose up -d --no-build
 ```
 
 The login flow uses Authorization Code, PKCE, state, and nonce validation. Sessions are encrypted in HttpOnly, SameSite cookies and expire after eight hours. Secure cookies default to the callback URL scheme; use HTTPS for production.
