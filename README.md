@@ -17,18 +17,22 @@ Store, browse, and cache container images on your homelab or small-team server. 
 - **Simple access:** optional OIDC login and group restrictions for management, with anonymous browsing.
 - **English and Chinese UI:** organization filters and a familiar Docker workflow.
 
-## Quick start
+## Deploy with Docker Compose
 
-Install Git, Docker, and Docker Compose, then:
+The public image **`ghcr.io/fanyang89/mini-harbor:latest`** supports Linux **amd64** and **arm64**. No registry login, Go, Node.js, or local image build is required.
+
+Install Git, Docker, and Docker Compose. Clone the repository for its Compose file and registry configuration, then pull and start the published images:
 
 ```bash
-git clone https://github.com/fanyang89/mini-harbor.git
+git clone --depth 1 https://github.com/fanyang89/mini-harbor.git
 cd mini-harbor
 docker compose pull
 docker compose up -d --no-build
 ```
 
-Open http://localhost:8080. Push your first image:
+Open http://localhost:8080. The stack runs the registry, cache gateway, and web console, with data stored in persistent Docker volumes.
+
+Push your first image:
 
 ```bash
 docker pull hello-world
@@ -37,6 +41,8 @@ docker push localhost:5000/hello-world:latest
 ```
 
 The defaults are for a trusted local network. Before exposing the service, configure [authentication and network access](docs/authentication.md).
+
+`latest` follows tested builds of `main`. For a fixed version, set `MINI_HARBOR_IMAGE` in `.env` to a `ghcr.io/fanyang89/mini-harbor:sha-<full-commit-sha>` tag or image digest. See [getting started](docs/getting-started.md) for port settings and [operations](docs/operations.md) for updates.
 
 ## Documentation
 
