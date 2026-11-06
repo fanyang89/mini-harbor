@@ -31,6 +31,17 @@ This deployment runs a pre-public-release build, not the latest public commit. T
 
 Mini Harbor focuses on image storage, browsing, and caching rather than Harbor's broader platform features.
 
+**Around 52 MiB observed for Mini Harbor; Harbor documents a 4 GB minimum and recommends 8 GB of memory for deployment.**
+
+| Resource | Mini Harbor: observed 24-hour average | Harbor 2.15: minimum configuration | Harbor 2.15: recommended configuration |
+| --- | --- | --- | --- |
+| Memory | **52.3 MiB** | **4 GB** | **8 GB** |
+| CPU | **0.0061 cores** | **2 CPUs** | **4 CPUs** |
+
+Mini Harbor's column measures application container usage in the deployment described above. Harbor's columns are published deployment resource requirements, **not measured usage**. This gives sizing context, not a like-for-like performance benchmark or a measured percentage saving.
+
+Source: Harbor 2.15 installation prerequisites, accessed 2026-11-06: https://goharbor.io/docs/2.15.0/install-config/installation-prereqs/
+
 **3 containers instead of 9 — one-third the container count of Harbor's standalone stack.** This comparison uses Harbor 2.15.0 with bundled PostgreSQL and Redis, without the optional scanner or metrics exporter. Container count is not a RAM or CPU usage ratio.
 
 | Runtime component | Mini Harbor | Harbor |
