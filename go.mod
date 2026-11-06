@@ -33,8 +33,8 @@ require (
 	github.com/zclconf/go-cty v1.14.4 // indirect
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
-	golang.org/x/mod v0.37.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
-	golang.org/x/text v0.39.0 // indirect
+	golang.org/x/mod v0.40.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
 )
