@@ -5,7 +5,7 @@ go 1.26.10
 require (
 	entgo.io/ent v0.14.6
 	github.com/coreos/go-oidc/v3 v3.20.0
-	github.com/go-jose/go-jose/v4 v4.1.4
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/mattn/go-sqlite3 v1.14.50
 	github.com/prometheus/client_golang v1.23.2
 	golang.org/x/oauth2 v0.36.0
