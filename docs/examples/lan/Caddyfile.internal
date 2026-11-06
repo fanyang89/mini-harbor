@@ -1,0 +1,16 @@
+{
+	auto_https disable_redirects
+}
+
+{$REGISTRY_HOST} {
+	tls internal
+
+	@registry path /v2 /v2/*
+	handle @registry {
+		reverse_proxy registry-gateway:5000
+	}
+
+	handle {
+		reverse_proxy web:8080
+	}
+}

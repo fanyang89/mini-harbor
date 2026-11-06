@@ -8,3 +8,4 @@ web/*.tsbuildinfo
 data/
 .playwright/
 .playwright-mcp/
+mini-harbor-root.crt

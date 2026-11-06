@@ -1,0 +1,31 @@
+services:
+  registry:
+    environment:
+      REGISTRY_HTTP_RELATIVEURLS: "true"
+  registry-gateway:
+    ports: !override []
+  web:
+    ports: !override []
+    environment:
+      REGISTRY_PUBLIC_URL: ${REGISTRY_HOST:?Set REGISTRY_HOST in .env}
+  caddy:
+    image: ${CADDY_IMAGE:-caddy:2-alpine}
+    restart: unless-stopped
+    ports:
+      - "${LAN_IP:?Set LAN_IP to the server LAN address}:443:443"
+    environment:
+      REGISTRY_HOST: ${REGISTRY_HOST:?Set REGISTRY_HOST in .env}
+      CF_API_TOKEN: ${CF_API_TOKEN:-}
+    volumes:
+      - ${CADDY_CONFIG:-./docs/examples/lan/Caddyfile.internal}:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      registry-gateway:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+volumes:
+  caddy-data:
+  caddy-config:

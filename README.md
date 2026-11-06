@@ -42,6 +42,8 @@ docker push localhost:5000/hello-world:latest
 
 The defaults are for a trusted local network. Before exposing the service, configure [authentication and network access](docs/authentication.md).
 
+**Deploying for other machines on your LAN?** Follow the [internal-only registry guide](docs/private-registry.md): trusted HTTPS with your domain, hosts + internal-CA HTTPS without a domain, or a quick HTTP setup by IP.
+
 `latest` follows tested builds of `main`. For a fixed version, set `MINI_HARBOR_IMAGE` in `.env` to a `ghcr.io/fanyang89/mini-harbor:sha-<full-commit-sha>` tag or image digest. See [getting started](docs/getting-started.md) for port settings and [operations](docs/operations.md) for updates.
 
 ## Documentation

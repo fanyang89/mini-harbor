@@ -1,5 +1,7 @@
 # Getting started
 
+For a registry shared with other LAN machines, start with the [internal-only deployment guide](private-registry.md), including HTTPS options with or without your own domain.
+
 [Home](../README.md) · [Configuration](configuration.md)
 
 ## Install

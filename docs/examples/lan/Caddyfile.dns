@@ -1,0 +1,19 @@
+{
+	auto_https disable_redirects
+}
+
+{$REGISTRY_HOST} {
+	tls {
+		dns cloudflare {env.CF_API_TOKEN}
+		resolvers 1.1.1.1 1.0.0.1
+	}
+
+	@registry path /v2 /v2/*
+	handle @registry {
+		reverse_proxy registry-gateway:5000
+	}
+
+	handle {
+		reverse_proxy web:8080
+	}
+}
