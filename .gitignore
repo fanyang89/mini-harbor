@@ -6,3 +6,5 @@ web/*.tsbuildinfo
 !.env.example
 .pi/
 data/
+.playwright/
+.playwright-mcp/
