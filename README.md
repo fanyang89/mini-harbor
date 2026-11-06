@@ -6,12 +6,26 @@ Mini Harbor is for homelabs, personal servers, and small teams that want to stor
 
 ## Why Mini Harbor?
 
-- **Built to stay lean.** SQLite metadata storage, a Go backend, and a static web UI. No separate database server, Redis, or Node.js runtime to keep running.
+- **Around 52 MiB in a running homelab deployment.** Our 24-hour observation averaged 52.3 MiB across the registry, gateway, and web/API containers. SQLite and a Go backend keep the stack lean, with no separate database server, Redis, or Node.js runtime. Measurement details below.
 - **Easy to self-host.** Start with Docker Compose; images, cache data, and metadata live in persistent volumes.
 - **Useful image management.** Browse repositories, inspect sizes and platforms, copy pull commands, create or replace tags, and preview stale-image cleanup.
 - **Built-in pull-through caching.** Cache Docker Hub and GHCR images by prefix, with configurable upstream priorities and fallback.
 - **Simple sign-in.** Optional OpenID Connect login and group restrictions for management operations, with anonymous browsing.
 - **A familiar workflow.** Standard Docker push/pull, OCI and Docker manifests, organization namespaces, and an English/Chinese console.
+
+### Measured resource usage
+
+A running k3s deployment observed over the 24 hours ending **2026-11-06 11:22 UTC**:
+
+| Metric | Registry + gateway + web/API |
+| --- | --- |
+| Average memory working set | **52.3 MiB** |
+| Highest sampled memory working set | **60.8 MiB** |
+| Average CPU usage | **6.1 millicores** (about **0.6% of one CPU core**) |
+
+These figures come from existing monitoring data, with no synthetic load added: summed container working-set memory and summed 5-minute CPU rates, evaluated at 5-minute intervals over 24 hours. The memory summary includes 287 available samples; the sampled peak can miss shorter spikes. Cluster services, ingress, authentication infrastructure, and disk storage are excluded.
+
+This deployment runs a pre-public-release build, not the latest public commit. The figures describe that deployment's observed workload, not a minimum resource requirement or a capacity benchmark. Usage varies with traffic, image catalog size, and the number of cache sources.
 
 ### A smaller stack than Harbor
 
@@ -29,7 +43,7 @@ Mini Harbor focuses on image storage, browsing, and caching rather than Harbor's
 
 The default Compose stack has **three containers**: the registry, the cache gateway, and the web/API service. The gateway also runs a Distribution cache process for each configured upstream source. Go and Node.js build tools are used during the image build, not at runtime.
 
-Fewer always-on services keep the stack lean. RAM and CPU savings have not yet been benchmarked against Harbor and depend on traffic, catalog size, and cache configuration.
+Fewer always-on services keep the stack lean. No running Harbor deployment was available in the observed cluster for a like-for-like RAM or CPU comparison.
 
 Harbor comparison source: https://github.com/goharbor/harbor/blob/v2.15.0/make/photon/prepare/templates/docker_compose/docker-compose.yml.jinja
 
