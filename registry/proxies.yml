@@ -1,0 +1,9 @@
+proxies:
+  - prefix: docker.io
+    remote_url: ${DOCKER_HUB_REMOTE_URL}
+    priority: 100
+    ttl: 168h
+  - prefix: ghcr.io
+    remote_url: https://ghcr.io
+    priority: 100
+    ttl: 168h

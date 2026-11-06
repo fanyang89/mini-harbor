@@ -1,0 +1,95 @@
+x-app-build: &app-build
+  context: .
+  args:
+    GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+    ALPINE_MIRROR: ${ALPINE_MIRROR:-https://mirrors.huaweicloud.com/alpine}
+
+services:
+  registry:
+    image: registry:3
+    restart: unless-stopped
+    environment:
+      OTEL_TRACES_EXPORTER: none
+      REGISTRY_HTTP_SECRET: ${REGISTRY_HTTP_SECRET:-mini-harbor-local-development-secret}
+    volumes:
+      - registry-data:/var/lib/registry
+      - ./registry/config.yml:/etc/distribution/config.yml:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/v2/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  registry-gateway:
+    image: mini-harbor:local
+    build: *app-build
+    restart: unless-stopped
+    entrypoint: ["mini-harbor-gateway"]
+    environment:
+      LISTEN_ADDR: :5000
+      LOCAL_REGISTRY_URL: http://registry:5000
+      PROXY_CONFIG_PATH: /etc/mini-harbor/proxies.yml
+      PROXY_STORAGE_ROOT: /var/lib/registry-proxy
+      IMAGE_USAGE_ROOT: /var/lib/mini-harbor/image-usage
+      DOCKER_HUB_REMOTE_URL: ${DOCKER_HUB_REMOTE_URL:-https://registry-1.docker.io}
+      REGISTRY_HTTP_SECRET: ${REGISTRY_HTTP_SECRET:-mini-harbor-local-development-secret}
+      HTTP_PROXY: ${PROXY_HTTP_PROXY:-}
+      HTTPS_PROXY: ${PROXY_HTTPS_PROXY:-}
+      NO_PROXY: ${PROXY_NO_PROXY:-localhost,127.0.0.1,registry}
+      OTEL_TRACES_EXPORTER: none
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${REGISTRY_PORT:-5000}:5000"
+    volumes:
+      - registry-proxy-data:/var/lib/registry-proxy
+      - mini-harbor-data:/var/lib/mini-harbor
+      - ./registry/proxies.yml:/etc/mini-harbor/proxies.yml:ro
+    depends_on:
+      registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/v2/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  web:
+    image: mini-harbor:local
+    build: *app-build
+    restart: unless-stopped
+    environment:
+      LISTEN_ADDR: :8080
+      REGISTRY_URL: http://registry:5000
+      REGISTRY_PUBLIC_URL: ${REGISTRY_PUBLIC_URL:-localhost:5000}
+      DATABASE_PATH: /var/lib/mini-harbor/mini-harbor.db
+      IMAGE_USAGE_ROOT: /var/lib/mini-harbor/image-usage
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URL: ${OIDC_REDIRECT_URL:-}
+      OIDC_SCOPES: ${OIDC_SCOPES:-}
+      OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-groups}
+      OIDC_ALLOWED_GROUPS: ${OIDC_ALLOWED_GROUPS:-}
+      OIDC_SESSION_SECRET: ${OIDC_SESSION_SECRET:-}
+      OIDC_COOKIE_SECURE: ${OIDC_COOKIE_SECURE:-}
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    volumes:
+      - mini-harbor-data:/var/lib/mini-harbor
+    depends_on:
+      registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/auth/me"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  registry-data:
+  registry-proxy-data:
+  mini-harbor-data:

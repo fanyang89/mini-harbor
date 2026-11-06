@@ -1,0 +1,42 @@
+version: "3"
+
+tasks:
+  dev:
+    desc: Run the Go API and Vite development server
+    deps: [dev:api, dev:web]
+
+  dev:api:
+    internal: true
+    env:
+      REGISTRY_URL: http://localhost:5000
+      REGISTRY_PUBLIC_URL: localhost:5000
+    cmds:
+      - go run ./cmd/server
+
+  dev:web:
+    internal: true
+    dir: web
+    cmds:
+      - npm run dev
+
+  test:
+    desc: Run backend and frontend checks
+    cmds:
+      - go test ./...
+      - npm run --prefix web lint
+      - npm run --prefix web build
+
+  build:
+    desc: Build the production container
+    cmds:
+      - docker compose build
+
+  up:
+    desc: Start the registry and web console
+    cmds:
+      - docker compose up -d --build
+
+  down:
+    desc: Stop the stack
+    cmds:
+      - docker compose down

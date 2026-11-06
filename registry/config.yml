@@ -1,0 +1,34 @@
+version: 0.1
+
+log:
+  level: info
+  formatter: json
+  fields:
+    service: registry
+
+storage:
+  cache:
+    blobdescriptor: inmemory
+  filesystem:
+    rootdirectory: /var/lib/registry
+  delete:
+    enabled: true
+  tag:
+    concurrencylimit: 8
+
+catalog:
+  maxentries: 1000
+
+tags:
+  maxtags: 1000
+
+http:
+  addr: :5000
+  headers:
+    X-Content-Type-Options: [nosniff]
+
+health:
+  storagedriver:
+    enabled: true
+    interval: 10s
+    threshold: 3

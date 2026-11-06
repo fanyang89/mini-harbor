@@ -1,0 +1,8 @@
+web/dist/
+web/node_modules/
+web/*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.pi/
+data/
