@@ -1,35 +1,55 @@
 # Mini Harbor
 
-A compact management console for a self-hosted CNCF Distribution Registry. The stack uses `registry:3`, a Go API, and a React + TypeScript + Vite UI built with shadcn/ui components.
+**Your own container registry, with a lightweight web console and fewer services to run.**
 
-## Features
+Mini Harbor is for homelabs, personal servers, and small teams that want to store, browse, and cache container images without operating a full Harbor installation. Push images with Docker, manage them in your browser, and cache upstream images locally.
 
-- Browse repositories and paginated tag catalogs
-- Inspect OCI and Docker manifests, sizes, platforms, and image metadata
-- Create a tag from an existing manifest
-- Overwrite a tag with another manifest
-- Delete one tag without affecting other tags
-- Delete a manifest and every tag pointing to its digest
-- Copy ready-to-run `docker pull` commands
-- Browse the console and read its catalog without signing in
-- Authenticate management operations with OpenID Connect and PKCE
-- Optionally restrict access by an OIDC group claim
-- Create, edit, and delete repository organizations
-- Persist organization metadata with SQLite and Ent
-- Cache images from configurable upstream registries by repository prefix
-- Persist registry data in a Docker volume
+## Why Mini Harbor?
 
-Image layers are created with the standard Registry push flow. The Web UI creates and updates tags by copying an existing manifest in the same repository.
+- **Built to stay lean.** SQLite metadata storage, a Go backend, and a static web UI. No separate database server, Redis, or Node.js runtime to keep running.
+- **Easy to self-host.** Start with Docker Compose; images, cache data, and metadata live in persistent volumes.
+- **Useful image management.** Browse repositories, inspect sizes and platforms, copy pull commands, create or replace tags, and preview stale-image cleanup.
+- **Built-in pull-through caching.** Cache Docker Hub and GHCR images by prefix, with configurable upstream priorities and fallback.
+- **Simple sign-in.** Optional OpenID Connect login and group restrictions for management operations, with anonymous browsing.
+- **A familiar workflow.** Standard Docker push/pull, OCI and Docker manifests, organization namespaces, and an English/Chinese console.
 
-## Start
+### A smaller stack than Harbor
+
+Mini Harbor focuses on image storage, browsing, and caching rather than Harbor's broader platform features.
+
+**3 containers instead of 9 — one-third the container count of Harbor's standalone stack.** This comparison uses Harbor 2.15.0 with bundled PostgreSQL and Redis, without the optional scanner or metrics exporter. Container count is not a RAM or CPU usage ratio.
+
+| Runtime component | Mini Harbor | Harbor |
+| --- | --- | --- |
+| Metadata storage | Embedded SQLite | PostgreSQL service |
+| Redis | Not required | Part of the standard stack |
+| Web console | Static files served by the Go backend | Separate portal service |
+| Background job service | No separate job service | Jobservice |
+| Vulnerability scanning and replication | Not included | Available |
+
+The default Compose stack has **three containers**: the registry, the cache gateway, and the web/API service. The gateway also runs a Distribution cache process for each configured upstream source. Go and Node.js build tools are used during the image build, not at runtime.
+
+Fewer always-on services keep the stack lean. RAM and CPU savings have not yet been benchmarked against Harbor and depend on traffic, catalog size, and cache configuration.
+
+Harbor comparison source: https://github.com/goharbor/harbor/blob/v2.15.0/make/photon/prepare/templates/docker_compose/docker-compose.yml.jinja
+
+Choose Mini Harbor for a focused registry with a UI and cache. Choose Harbor when you need features such as project-level RBAC, integrated vulnerability scanning, or replication policies. Mini Harbor is an independent project, not an official Harbor distribution.
+
+## Quick start
+
+You need Git, Docker, and Docker Compose. The build runs inside Docker; you do not need Go or Node.js installed on the host.
+
+The default configuration is for a trusted local network. Management operations are unauthenticated until OIDC is enabled; the Registry port needs its own access controls for use outside that network.
 
 ```bash
+git clone https://github.com/fanyang89/mini-harbor.git
+cd mini-harbor
 docker compose up -d --build
 ```
 
-Open <http://localhost:8080>. The Registry API is available at `localhost:5000`.
+Open http://localhost:8080 to browse your images. Push and pull through `localhost:5000`.
 
-Push an image:
+### Push your first image
 
 ```bash
 docker pull hello-world
@@ -37,7 +57,40 @@ docker tag hello-world localhost:5000/hello-world:latest
 docker push localhost:5000/hello-world:latest
 ```
 
-Refresh the Web UI after the push.
+Refresh the console to see the image, inspect its tags, and copy a pull command. New image content is uploaded with `docker push`; the console creates or replaces tags by copying an existing manifest in the same repository.
+
+### Cache an upstream image
+
+```bash
+docker pull localhost:5000/docker.io/library/alpine:latest
+```
+
+Use `docker.io/` or `ghcr.io/` before the upstream image name. Docker Hub official images also need `library/`. Cached content is kept in a persistent volume for subsequent pulls.
+
+### Use another port or hostname
+
+Set these values in a `.env` file beside `compose.yml`:
+
+```dotenv
+WEB_PORT=8080
+REGISTRY_PORT=5000
+REGISTRY_PUBLIC_URL=registry.example.com:5000
+```
+
+`REGISTRY_PUBLIC_URL` changes the address shown in pull commands; it does not configure DNS, TLS, or authentication. For access from another machine, use your host's address instead of `localhost`. Docker requires HTTPS for remote registries unless you explicitly configure that address as an insecure registry for trusted-network use.
+
+### Stop or update
+
+```bash
+# Stop the stack, keeping its data volumes.
+docker compose down
+
+# Update the source and rebuild.
+git pull --ff-only
+docker compose up -d --build
+```
+
+Back up the persistent volumes before updating. Avoid `docker compose down -v` unless you intend to delete the registry, cache, and metadata volumes.
 
 ## Configuration
 
@@ -116,14 +169,14 @@ The Registry gateway exposes Prometheus metrics at `http://localhost:5000/metric
 
 ### Organizations
 
-Organizations are independent records backed by SQLite. A repository belongs to an organization when its name starts with `org-name/`:
+Use organizations to group repositories in the console. A repository belongs to an organization when its name starts with `org-name/`:
 
 ```bash
 docker tag hello-world localhost:5000/platform/hello-world:latest
 docker push localhost:5000/platform/hello-world:latest
 ```
 
-Organization names are immutable. An organization can only be deleted after every repository under its namespace has been removed.
+Organization names are immutable. An organization can only be deleted after every repository under its namespace has been removed. Organizations group images; they do not provide per-organization access control.
 
 ### OpenID Connect
 
@@ -148,28 +201,6 @@ Generate a session secret with `openssl rand -base64 32`. The login flow uses Au
 
 OIDC protects mutating management API requests. The Web console and its catalog API are publicly readable; authenticated users in an allowed group can manage tags, images, and organizations. OIDC does not authenticate `docker pull` or `docker push` against the Registry port. Keep the Registry on a trusted network or configure a separate Distribution token service before exposing it.
 
-## Development
-
-Requirements: Go 1.26.10 or later, a C compiler for SQLite, Node.js 24, npm, Docker, and Docker Compose. Install Task to use the commands below.
-
-```bash
-docker compose up -d registry
-npm install --prefix web
-task dev
-```
-
-Run all checks:
-
-```bash
-task test
-```
-
-Regenerate Ent code after changing `internal/ent/schema`:
-
-```bash
-go generate ./internal/ent
-```
-
 ## Security
 
 OIDC is disabled until `OIDC_ISSUER` is set, so the default stack is intended for a trusted local network. Do not expose it directly to the internet. For production, enable OIDC, use HTTPS, keep the Registry port private or separately authenticated, restrict the catalog endpoint, and back up the registry volume.
@@ -181,6 +212,10 @@ Deleting a tag only removes that reference. Deleting by digest removes the manif
 Confirm that a recent, restorable backup or storage snapshot exists before continuing. Stop all registry writers and run Distribution garbage collection against the registry's storage volume during a maintenance window. Start with a dry run and review its output before deleting blobs.
 
 Do not use `--delete-untagged`. Digest-only manifests, multi-architecture child manifests, and OCI artifacts may rely on untagged manifests.
+
+## Development
+
+For local development and test instructions, see `docs/development.md`.
 
 ## License
 
