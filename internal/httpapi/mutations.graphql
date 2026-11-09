@@ -1,0 +1,24 @@
+input OrganizationInput { name: String!, displayName: String!, description: String! = "" }
+type GCCandidate { repository: String!, digest: String!, tags: [String!]!, lastUsed: String!, logicalSize: Long! }
+type GCPreview {
+  planId: String!
+  generatedAt: String!
+  expiresAt: String!
+  cutoff: String!
+  candidates: [GCCandidate!]!
+  manifestCount: Int!
+  tagCount: Int!
+  logicalSize: Long!
+}
+type GCResult { repository: String!, digest: String!, status: String!, reason: String! }
+type GCExecution { deletedCount: Int!, skippedCount: Int!, failedCount: Int!, results: [GCResult!]! }
+type Mutation {
+  createOrganization(input: OrganizationInput!): Organization!
+  updateOrganization(input: OrganizationInput!): Organization!
+  deleteOrganization(name: String!): Boolean!
+  putTag(repository: String!, source: String!, target: String!, overwrite: Boolean! = false): Image!
+  deleteTag(repository: String!, tag: String!): Boolean!
+  deleteManifest(repository: String!, digest: String!): Boolean!
+  previewImageGC(unusedForDays: Int!): GCPreview!
+  executeImageGC(planId: String!, confirmation: String!): GCExecution!
+}

@@ -90,6 +90,7 @@ func New(client Registry, organizations Organizations, imageUsage ImageUsage, pu
 	})
 
 	mux := http.NewServeMux()
+	server.registerGraphQL(mux, authentication)
 	authentication.Register(mux)
 	mux.HandleFunc("GET /api/auth/me", authentication.Status)
 	mux.Handle("/api/", authentication.RequireAPI(api))

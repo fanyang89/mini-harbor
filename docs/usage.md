@@ -6,19 +6,16 @@
 
 The image catalog shows repository names, tags, sizes, creation times, and last-pulled times. Search by image name, filter by organization, and sort by size or timestamps. Copy a pull command directly from the table or open an image for details.
 
-Images appear progressively in batches of eight repositories. While loading,
-the progress indicator shows how many repositories are complete; search and
-sorting cover the images loaded so far. Once loading finishes, they cover the
-full catalog. Refreshing starts a new load. Switching to Organizations cancels
-unfinished image requests and loads only organization data.
+The image catalog loads 50 matching images at a time. **Load more** fetches the
+next page; it does not automatically download the full catalog. Search and
+sorting run on the server and cover all repositories, including images that
+have not been loaded in the browser. A search ending in `/` selects that
+repository prefix. Changing search or sort resets pagination; refreshing starts
+a new load. Select-all applies only to displayed rows.
 
-The browser sends one `GET /api/images` batch at a time, using up to eight
-repeated `repository` query parameters. The authenticated API middleware is the
-same as for existing repository routes. Each Web replica permits at most four
-concurrent repository-image queries across batch and legacy tag-list requests.
-For 188 repositories, a full image load makes 24 batch requests instead of 188
-simultaneous per-repository requests. Backend metadata still needs to be read
-for every repository to preserve full-catalog search and sorting.
+Switching to Organizations cancels unfinished image requests and loads only
+organization data. Management queries and writes use [GraphQL](graphql.md).
+Docker/OCI clients continue to use the standard Registry `/v2/` API.
 
 ![Image catalog with example repositories](images/console.png)
 

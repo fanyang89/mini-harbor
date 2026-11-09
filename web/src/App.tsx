@@ -65,15 +65,6 @@ interface RepositoryImage extends Image {
 }
 
 const imageKey = (image: RepositoryImage) => `${image.repository}\0${image.tag}`
-const timestamp = (value?: string) => {
-  if (!value) return null
-  const parsed = Date.parse(value)
-  return Number.isNaN(parsed) ? null : parsed
-}
-const imageSortValue = (image: RepositoryImage, sort: ImageSort) => {
-  if (sort === "size") return image.size
-  return timestamp(image[sort])
-}
 
 function App() {
   const { locale, setLocale, t, tn, formatDate } = useI18n()
@@ -91,7 +82,9 @@ function App() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
   const [loadingImages, setLoadingImages] = useState(true)
   const [loadingOrganizations, setLoadingOrganizations] = useState(true)
-  const [imageProgress, setImageProgress] = useState({ loaded: 0, total: 0 })
+  const [imageTotal, setImageTotal] = useState(0)
+  const [imagePage, setImagePage] = useState({ endCursor: "", hasNextPage: false })
+  const [imageSearch, setImageSearch] = useState(search.trim().toLowerCase())
   const imageRequest = useRef<AbortController | null>(null)
   const organizationRequest = useRef<AbortController | null>(null)
   const activeView = useRef(view)
@@ -131,7 +124,12 @@ function App() {
     setSearchParams(nextSearchParams, { replace: true, preventScrollReset: true })
   }
 
-  const loadImages = useCallback(async () => {
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setImageSearch(search.trim().toLowerCase()), 250)
+    return () => window.clearTimeout(timeout)
+  }, [search])
+
+  const loadImages = useCallback(async (after = "") => {
     if (activeView.current !== "images") return
     imageRequest.current?.abort()
     const controller = new AbortController()
@@ -139,31 +137,30 @@ function App() {
     const { signal } = controller
     setLoadingImages(true)
     setError("")
-    setImages([])
-    setSelectedKeys(new Set())
-    setImageProgress({ loaded: 0, total: 0 })
+    if (!after) {
+      setImages([])
+      setSelectedKeys(new Set())
+      setImageTotal(0)
+      setImagePage({ endCursor: "", hasNextPage: false })
+    }
     try {
-      const [nextStatus, payload] = await Promise.all([api.status(signal), api.repositories(signal)])
+      const payload = await api.catalog(imageSearch, imageSort, sortDirection, after, signal)
       if (signal.aborted) return
-      setStatus(nextStatus)
-      const repositories = [...new Set(payload.repositories)]
-      setImageProgress({ loaded: 0, total: repositories.length })
-      for (let offset = 0; offset < repositories.length; offset += 8) {
-        const batch = await api.imageBatch(repositories.slice(offset, offset + 8), signal)
-        if (signal.aborted) return
-        const next = batch.repositories.flatMap(({ name, images }) =>
-          images.map((image) => ({ ...image, repository: name })),
-        )
-        setImages((current) => [...current, ...next])
-        setImageProgress({ loaded: Math.min(offset + 8, repositories.length), total: repositories.length })
-      }
+      setStatus(payload.status)
+      setImages((current) => {
+        const rows = after ? new Map(current.map((image) => [imageKey(image), image])) : new Map<string, RepositoryImage>()
+        for (const image of payload.images.nodes) rows.set(imageKey(image), image)
+        return [...rows.values()]
+      })
+      setImageTotal(payload.images.totalCount)
+      setImagePage(payload.images.pageInfo)
     } catch (cause) {
       if (signal.aborted) return
       setError(cause instanceof Error ? cause.message : t("registryError"))
     } finally {
       if (!signal.aborted) setLoadingImages(false)
     }
-  }, [t])
+  }, [t, imageSearch, imageSort, sortDirection])
 
   const loadOrganizations = useCallback(async () => {
     if (activeView.current !== "organizations") return
@@ -174,9 +171,9 @@ function App() {
     setLoadingOrganizations(true)
     setError("")
     try {
-      const [nextStatus, payload] = await Promise.all([api.status(signal), api.organizations(signal)])
+      const payload = await api.organizations(signal)
       if (signal.aborted) return
-      setStatus(nextStatus)
+      setStatus(payload.status)
       startTransition(() => setOrganizations(payload.organizations))
     } catch (cause) {
       if (signal.aborted) return
@@ -206,14 +203,16 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!identity) return
-    if (view === "images") void loadImages()
-    else void loadOrganizations()
-    return () => {
-      imageRequest.current?.abort()
-      organizationRequest.current?.abort()
-    }
-  }, [identity, view, loadImages, loadOrganizations])
+    if (!identity || view !== "images") return
+    void loadImages()
+    return () => imageRequest.current?.abort()
+  }, [identity, view, loadImages])
+
+  useEffect(() => {
+    if (!identity || view !== "organizations") return
+    void loadOrganizations()
+    return () => organizationRequest.current?.abort()
+  }, [identity, view, loadOrganizations])
 
   useEffect(() => {
     if (!notice) return
@@ -240,20 +239,6 @@ function App() {
   }, [])
 
   const visibleImages = images
-    .filter((image) => deferredSearch.endsWith("/")
-      ? image.repository.toLowerCase().startsWith(deferredSearch)
-      : `${image.repository} ${image.tag} ${image.digest} ${image.architecture} ${image.os}`
-          .toLowerCase()
-          .includes(deferredSearch))
-    .sort((left, right) => {
-      const leftValue = imageSortValue(left, imageSort)
-      const rightValue = imageSortValue(right, imageSort)
-      if (leftValue === null && rightValue === null) return imageKey(left).localeCompare(imageKey(right))
-      if (leftValue === null) return 1
-      if (rightValue === null) return -1
-      const difference = (leftValue - rightValue) * (sortDirection === "asc" ? 1 : -1)
-      return difference || imageKey(left).localeCompare(imageKey(right))
-    })
   const organizationSearch = deferredSearch.endsWith("/") ? deferredSearch.slice(0, -1) : deferredSearch
   const visibleOrganizations = organizations.filter((organization) =>
     `${organization.name} ${organization.displayName} ${organization.description}`.toLowerCase().includes(organizationSearch),
@@ -541,9 +526,9 @@ function App() {
         ) : null}
       </div>
 
-      {view === "images" && imageProgress.total > imageProgress.loaded && (
+      {view === "images" && imageTotal > 0 && (
         <p role="status" className="mb-3 text-xs text-muted-foreground">
-          {t("imageLoadProgress", imageProgress)}
+          {t("imagePageProgress", { loaded: images.length, total: imageTotal })}
         </p>
       )}
 
@@ -751,10 +736,17 @@ function App() {
               <EmptyState icon={<SearchX className="size-8" aria-hidden />} title={t("noImagesMatch")} />
             )}
           </section>
+        ) : imageSearch ? (
+          <EmptyState icon={<SearchX className="size-8" aria-hidden />} title={t("noImagesMatch")} />
         ) : (
           <EmptyState icon={<Layers3 className="size-8" aria-hidden />} title={t("registryEmptyTitle")} hint={canManage ? t("registryEmptyHint") : undefined}>
             {canManage && <PushCommands registry={status.registry} repository="hello-world" />}
           </EmptyState>
+        )}
+        {view === "images" && imagePage.hasNextPage && (
+          <Button variant="outline" disabled={loadingImages || imageSearch !== search.trim().toLowerCase()} onClick={() => void loadImages(imagePage.endCursor)}>
+            {loadingImages ? t("loading") : t("loadMore")}
+          </Button>
         )}
       </main>
 

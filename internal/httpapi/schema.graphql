@@ -1,0 +1,38 @@
+scalar Long
+
+type RegistryStatus { online: Boolean!, registry: String!, apiVersion: String! }
+type Organization {
+  name: String!
+  displayName: String!
+  description: String!
+  createdAt: String!
+  updatedAt: String!
+  repositoryCount: Int!
+}
+type Platform { architecture: String!, os: String!, variant: String! }
+type Image {
+  repository: String!
+  tag: String!
+  digest: String!
+  mediaType: String!
+  size: Long!
+  layers: Int!
+  platforms: [Platform!]!
+  created: String!
+  lastUsed: String!
+  architecture: String!
+  os: String!
+}
+enum ImageSort { LAST_USED CREATED SIZE }
+enum SortDirection { ASC DESC }
+input ImageFilter { search: String, organization: String }
+type PageInfo { endCursor: String!, hasNextPage: Boolean! }
+type ImageConnection { nodes: [Image!]!, totalCount: Int!, pageInfo: PageInfo! }
+type RepositoryConnection { nodes: [String!]!, totalCount: Int!, pageInfo: PageInfo! }
+type Query {
+  status: RegistryStatus!
+  organizations: [Organization!]!
+  repositories(first: Int! = 50, after: String! = "", search: String! = ""): RepositoryConnection!
+  images(first: Int! = 50, after: String! = "", filter: ImageFilter, sort: ImageSort! = LAST_USED, direction: SortDirection! = DESC): ImageConnection!
+  image(repository: String!, reference: String!): Image!
+}

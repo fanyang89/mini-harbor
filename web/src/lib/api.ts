@@ -87,9 +87,6 @@ export class ApiRequestError extends Error {
   }
 }
 
-const repositoryPath = (repository: string) =>
-  repository.split("/").map(encodeURIComponent).join("/")
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -113,62 +110,72 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
+export interface RepositoryImage extends Image { repository: string }
+export interface ImageConnection {
+  nodes: RepositoryImage[]
+  totalCount: number
+  pageInfo: { endCursor: string; hasNextPage: boolean }
+}
+
+const imageFields = `repository tag digest mediaType size layers created lastUsed architecture os
+  platforms { architecture os variant }`
+const organizationFields = "name displayName description createdAt updatedAt repositoryCount"
+
+async function graphql<T>(query: string, variables: Record<string, unknown>, mutation = false, signal?: AbortSignal): Promise<T> {
+  const payload = { query, variables }
+  const result = await request<{ data?: T; errors?: { message: string; extensions?: { status?: number } }[] }>(
+    mutation ? "/graphql" : `/graphql?${new URLSearchParams({ query, variables: JSON.stringify(variables) })}`,
+    mutation ? { method: "POST", body: JSON.stringify(payload), signal } : { signal },
+  )
+  if (result.errors?.length) {
+    throw new ApiRequestError(result.errors.map((error) => error.message).join("; "), result.errors[0].extensions?.status ?? 500)
+  }
+  if (!result.data) throw new ApiRequestError("GraphQL response is missing data", 502)
+  return result.data
+}
+
 export const api = {
   auth: (signal?: AbortSignal) => request<AuthStatus>("/api/auth/me", { signal }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
-  status: (signal?: AbortSignal) => request<RegistryStatus>("/api/status", { signal }),
   organizations: (signal?: AbortSignal) =>
-    request<{ organizations: Organization[] }>("/api/organizations", { signal }),
-  createOrganization: (name: string, displayName: string, description: string) =>
-    request<Organization>("/api/organizations", {
-      method: "POST",
-      body: JSON.stringify({ name, displayName, description }),
-    }),
-  updateOrganization: (name: string, displayName: string, description: string) =>
-    request<Organization>(`/api/organizations/${encodeURIComponent(name)}`, {
-      method: "PUT",
-      body: JSON.stringify({ displayName, description }),
-    }),
+    graphql<{ status: RegistryStatus; organizations: Organization[] }>(
+      `query Organizations { status { online registry apiVersion } organizations { ${organizationFields} } }`, {}, false, signal),
+  createOrganization: async (name: string, displayName: string, description: string) =>
+    (await graphql<{ createOrganization: Organization }>(
+      `mutation CreateOrganization($input: OrganizationInput!) { createOrganization(input: $input) { ${organizationFields} } }`,
+      { input: { name, displayName, description } }, true)).createOrganization,
+  updateOrganization: async (name: string, displayName: string, description: string) =>
+    (await graphql<{ updateOrganization: Organization }>(
+      `mutation UpdateOrganization($input: OrganizationInput!) { updateOrganization(input: $input) { ${organizationFields} } }`,
+      { input: { name, displayName, description } }, true)).updateOrganization,
   deleteOrganization: (name: string) =>
-    request<void>(`/api/organizations/${encodeURIComponent(name)}`, {
-      method: "DELETE",
-    }),
-  repositories: (signal?: AbortSignal) =>
-    request<{ repositories: string[] }>("/api/repositories", { signal }),
-  imageBatch: (repositories: string[], signal?: AbortSignal) => {
-    const query = new URLSearchParams()
-    for (const repository of repositories) query.append("repository", repository)
-    return request<{ repositories: { name: string; images: Image[] }[] }>(
-      `/api/images?${query}`, { signal },
-    )
-  },
-  images: (repository: string) =>
-    request<{ name: string; images: Image[] }>(
-      `/api/repositories/${repositoryPath(repository)}/tags`,
-    ),
-  putTag: (repository: string, source: string, target: string, overwrite = false) =>
-    request<Image>(`/api/repositories/${repositoryPath(repository)}/tags`, {
-      method: overwrite ? "PUT" : "POST",
-      body: JSON.stringify({ source, target }),
-    }),
+    graphql(`mutation DeleteOrganization($name: String!) { deleteOrganization(name: $name) }`, { name }, true),
+  catalog: (search: string, sort: "lastUsed" | "created" | "size", direction: "asc" | "desc", after = "", signal?: AbortSignal) =>
+    graphql<{ status: RegistryStatus; images: ImageConnection }>(
+      `query Catalog($filter: ImageFilter!, $sort: ImageSort!, $direction: SortDirection!, $after: String!) {
+        status { online registry apiVersion }
+        images(first: 50, after: $after, filter: $filter, sort: $sort, direction: $direction) {
+          nodes { ${imageFields} } totalCount pageInfo { endCursor hasNextPage }
+        }
+      }`, { filter: { search }, sort: { lastUsed: "LAST_USED", created: "CREATED", size: "SIZE" }[sort], direction: direction.toUpperCase(), after }, false, signal),
+  putTag: async (repository: string, source: string, target: string, overwrite = false) =>
+    (await graphql<{ putTag: Image }>(
+      `mutation PutTag($repository: String!, $source: String!, $target: String!, $overwrite: Boolean!) {
+        putTag(repository: $repository, source: $source, target: $target, overwrite: $overwrite) { ${imageFields} }
+      }`, { repository, source, target, overwrite }, true)).putTag,
   deleteTag: (repository: string, tag: string) =>
-    request<void>(
-      `/api/repositories/${repositoryPath(repository)}/tags/${encodeURIComponent(tag)}`,
-      { method: "DELETE" },
-    ),
+    graphql(`mutation DeleteTag($repository: String!, $tag: String!) { deleteTag(repository: $repository, tag: $tag) }`, { repository, tag }, true),
   deleteManifest: (repository: string, digest: string) =>
-    request<void>(
-      `/api/repositories/${repositoryPath(repository)}/manifests/${encodeURIComponent(digest)}`,
-      { method: "DELETE" },
-    ),
-  previewImageGC: (unusedForDays: number) =>
-    request<ImageGCPreview>("/api/image-gc/preview", {
-      method: "POST",
-      body: JSON.stringify({ unusedForDays }),
-    }),
-  executeImageGC: (planId: string) =>
-    request<ImageGCExecution>("/api/image-gc/execute", {
-      method: "POST",
-      body: JSON.stringify({ planId, confirmation: "DELETE" }),
-    }),
+    graphql(`mutation DeleteManifest($repository: String!, $digest: String!) { deleteManifest(repository: $repository, digest: $digest) }`, { repository, digest }, true),
+  previewImageGC: async (unusedForDays: number) =>
+    (await graphql<{ previewImageGC: ImageGCPreview }>(
+      `mutation PreviewImageGC($unusedForDays: Int!) { previewImageGC(unusedForDays: $unusedForDays) {
+        planId generatedAt expiresAt cutoff manifestCount tagCount logicalSize
+        candidates { repository digest tags lastUsed logicalSize }
+      } }`, { unusedForDays }, true)).previewImageGC,
+  executeImageGC: async (planId: string) =>
+    (await graphql<{ executeImageGC: ImageGCExecution }>(
+      `mutation ExecuteImageGC($planId: String!, $confirmation: String!) { executeImageGC(planId: $planId, confirmation: $confirmation) {
+        deletedCount skippedCount failedCount results { repository digest status reason }
+      } }`, { planId, confirmation: "DELETE" }, true)).executeImageGC,
 }
