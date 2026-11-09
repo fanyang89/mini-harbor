@@ -59,12 +59,12 @@ type server struct {
 	retention     *retention.Service
 }
 
-func New(client Registry, organizations Organizations, imageUsage ImageUsage, publicURL, webRoot string, authentication *auth.Authenticator) http.Handler {
+func New(client Registry, organizations Organizations, imageUsage ImageUsage, publicURL, webRoot string, authentication *auth.Authenticator, plans ...retention.PlanStore) http.Handler {
 	server := &server{
 		registry:      client,
 		organizations: organizations,
 		imageUsage:    imageUsage,
-		retention:     retention.New(client, imageUsage),
+		retention:     retention.New(client, imageUsage, plans...),
 		publicURL:     publicURL,
 		webRoot:       webRoot,
 	}

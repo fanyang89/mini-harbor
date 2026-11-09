@@ -13,7 +13,6 @@ import (
 	"github.com/fanyang89/mini-harbor/internal/httpapi"
 	"github.com/fanyang89/mini-harbor/internal/organization"
 	"github.com/fanyang89/mini-harbor/internal/registry"
-	"github.com/fanyang89/mini-harbor/internal/usage"
 )
 
 func main() {
@@ -22,7 +21,6 @@ func main() {
 	listenAddr := getenv("LISTEN_ADDR", ":8080")
 	webRoot := getenv("WEB_ROOT", "web/dist")
 	databaseURLs := splitCSV(getenv("RQLITE_URLS", "http://localhost:4001"))
-	imageUsageRoot := getenv("IMAGE_USAGE_ROOT", "data/image-usage")
 	redirectURL := os.Getenv("OIDC_REDIRECT_URL")
 	cookieSecure, err := strconv.ParseBool(getenv("OIDC_COOKIE_SECURE", strconv.FormatBool(strings.HasPrefix(redirectURL, "https://"))))
 	if err != nil {
@@ -47,11 +45,6 @@ func main() {
 			slog.Warn("close organization database", "error", err)
 		}
 	}()
-	usageStore, err := usage.Open(imageUsageRoot)
-	if err != nil {
-		slog.Error("open image usage store", "error", err)
-		os.Exit(1)
-	}
 	discoveryContext, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	authentication, err := auth.New(discoveryContext, auth.Config{
@@ -72,7 +65,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:              listenAddr,
-		Handler:           httpapi.New(client, organizations, usageStore, publicURL, webRoot, authentication),
+		Handler:           httpapi.New(client, organizations, organizations, publicURL, webRoot, authentication, organizations),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,

@@ -41,12 +41,12 @@ services:
       LOCAL_REGISTRY_URL: http://registry:5000
       PROXY_CONFIG_PATH: /etc/mini-harbor/proxies.yml
       PROXY_STORAGE_ROOT: /var/lib/registry-proxy
-      IMAGE_USAGE_ROOT: /var/lib/mini-harbor/image-usage
+      RQLITE_URLS: ${RQLITE_URLS:-http://rqlite:4001}
       DOCKER_HUB_REMOTE_URL: ${DOCKER_HUB_REMOTE_URL:-https://registry-1.docker.io}
       REGISTRY_HTTP_SECRET: ${REGISTRY_HTTP_SECRET:-mini-harbor-local-development-secret}
       HTTP_PROXY: ${PROXY_HTTP_PROXY:-}
       HTTPS_PROXY: ${PROXY_HTTPS_PROXY:-}
-      NO_PROXY: ${PROXY_NO_PROXY:-localhost,127.0.0.1,registry}
+      NO_PROXY: ${PROXY_NO_PROXY:-localhost,127.0.0.1,registry,rqlite}
       OTEL_TRACES_EXPORTER: none
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -54,9 +54,10 @@ services:
       - "${REGISTRY_PORT:-5000}:5000"
     volumes:
       - registry-proxy-data:/var/lib/registry-proxy
-      - mini-harbor-data:/var/lib/mini-harbor
       - ./registry/proxies.yml:/etc/mini-harbor/proxies.yml:ro
     depends_on:
+      rqlite:
+        condition: service_healthy
       registry:
         condition: service_healthy
     healthcheck:
@@ -75,7 +76,6 @@ services:
       REGISTRY_URL: http://registry:5000
       REGISTRY_PUBLIC_URL: ${REGISTRY_PUBLIC_URL:-localhost:5000}
       RQLITE_URLS: ${RQLITE_URLS:-http://rqlite:4001}
-      IMAGE_USAGE_ROOT: /var/lib/mini-harbor/image-usage
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
@@ -87,8 +87,6 @@ services:
       OIDC_COOKIE_SECURE: ${OIDC_COOKIE_SECURE:-}
     ports:
       - "${WEB_PORT:-8080}:8080"
-    volumes:
-      - mini-harbor-data:/var/lib/mini-harbor
     depends_on:
       rqlite:
         condition: service_healthy

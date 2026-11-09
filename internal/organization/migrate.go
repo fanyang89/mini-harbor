@@ -16,6 +16,19 @@ var migrations = []string{
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	)`,
+	`CREATE TABLE IF NOT EXISTS image_usage (
+		repository TEXT NOT NULL,
+		digest TEXT NOT NULL,
+		last_used INTEGER NOT NULL,
+		PRIMARY KEY (repository, digest)
+	)`,
+	`CREATE TABLE IF NOT EXISTS cleanup_plans (
+		id TEXT PRIMARY KEY NOT NULL,
+		preview TEXT NOT NULL,
+		expires_at INTEGER NOT NULL,
+		state TEXT NOT NULL DEFAULT 'pending',
+		execution TEXT NOT NULL DEFAULT ''
+	)`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

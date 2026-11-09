@@ -13,6 +13,7 @@ import (
 
 	"github.com/fanyang89/mini-harbor/internal/legacyimport"
 	"github.com/fanyang89/mini-harbor/internal/organization"
+	"github.com/fanyang89/mini-harbor/internal/usage"
 )
 
 func main() { os.Exit(run(context.Background(), os.Args[1:], os.Stdout, os.Stderr)) }
@@ -21,6 +22,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("mini-harbor-migrate", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	path := flags.String("source", "", "Legacy SQLite database (read-only)")
+	usagePath := flags.String("usage-source", "", "Frozen legacy image-usage directory (instead of --source)")
 	defaultURLs := os.Getenv("RQLITE_URLS")
 	if defaultURLs == "" {
 		defaultURLs = "http://localhost:4001"
@@ -34,12 +36,27 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 		return 2
 	}
-	if *path == "" || *timeout <= 0 || flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "--source is required, --timeout must be positive, and positional arguments are not accepted")
+	if (*path == "") == (*usagePath == "") || *timeout <= 0 || flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "exactly one of --source or --usage-source is required, --timeout must be positive, and positional arguments are not accepted")
 		return 2
 	}
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
+	if *usagePath != "" {
+		records, err := usage.ReadLegacy(*usagePath)
+		if err == nil {
+			err = organization.ImportUsage(ctx, records, strings.Split(*urls, ","), *dryRun)
+		}
+		if err != nil {
+			fmt.Fprintln(stderr, "Usage migration failed (writes are not retried):", err)
+			return 1
+		}
+		if err := json.NewEncoder(stdout).Encode(map[string]any{"source": len(records), "dryRun": *dryRun, "verified": !*dryRun}); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return 0
+	}
 	source, err := legacyimport.Read(ctx, *path)
 	if err != nil {
 		fmt.Fprintln(stderr, "Read legacy SQLite:", err)

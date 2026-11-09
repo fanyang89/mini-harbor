@@ -17,8 +17,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fanyang89/mini-harbor/internal/organization"
 	"github.com/fanyang89/mini-harbor/internal/proxycache"
-	"github.com/fanyang89/mini-harbor/internal/usage"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -59,10 +59,13 @@ func run() error {
 	}
 	defer cleanup()
 
-	usageStore, err := usage.Open(getenv("IMAGE_USAGE_ROOT", "/var/lib/mini-harbor/image-usage"))
+	databaseContext, cancelDatabase := context.WithTimeout(ctx, 15*time.Second)
+	usageStore, err := organization.Open(databaseContext, strings.Split(getenv("RQLITE_URLS", "http://rqlite:4001"), ",")...)
+	cancelDatabase()
 	if err != nil {
 		return err
 	}
+	defer usageStore.Close()
 	handler, err := proxycache.NewGatewayWithMetrics(getenv("LOCAL_REGISTRY_URL", "http://registry:5000"), routes, metrics, usageStore)
 	if err != nil {
 		return err

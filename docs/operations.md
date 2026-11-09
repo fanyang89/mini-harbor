@@ -112,14 +112,46 @@ import is safe when those rows still match. A successful import is followed by
 a linearizable read-back comparison of all source records. Dry runs issue no
 target writes, including on a fresh database. A real import initializes a fresh
 target using the application's versioned migrations before writing records.
-Existing targets must have supported schema version 1. `--timeout` bounds the
+Existing targets must have a supported schema version. `--timeout` bounds the
 whole operation (default `2m`). Exit code 0 means success, 1 means migration
 failure, and 2 means invalid arguments. The source is never deleted.
 
 An API error saying the write outcome is unknown means the request may have
 committed. Reload the organization before deciding whether to retry. Metadata
-failover does not provide HA for registry storage, gateway caches, usage records,
-or cleanup coordination.
+failover does not provide HA for registry storage or gateway caches.
+
+## Web replicas and legacy usage migration
+
+Web replicas share organization metadata, usage timestamps and cleanup plans in
+rqlite. They need no data volume. Configure `REGISTRY_URL` with a reachable
+Registry service, not a loopback address. OIDC replicas must use the same
+`OIDC_SESSION_SECRET`; sessions and login flow state are encrypted cookies.
+Registry uploads and gateway proxy caches still require their own storage design.
+
+Stop the old Gateway before freezing its `image-usage` directory. Preserve a
+complete backup, then use the new image's independent migrator:
+
+```sh
+mini-harbor-migrate --usage-source /legacy/image-usage --dry-run
+mini-harbor-migrate --usage-source /legacy/image-usage --timeout 10m
+```
+
+Usage dry-run validates source files and target connectivity without schema or
+data writes. Import initializes/upgrades the schema, writes batches of 200 records,
+and verifies that every target timestamp is at least as new as its source. It
+never decreases a timestamp. An interrupted import can be resumed; batches already
+committed remain. Keep Gateway and Web on the same new revision and rqlite cluster.
+Older binaries may reject the upgraded schema on restart; rollback must preserve
+new metadata and usage rather than simply restoring an old image.
+
+Cleanup plans are atomically claimed, with at most one cleanup execution running
+across all replicas. Completed results can be read from another replica. Running
+claims never expire automatically because a database lease cannot fence Registry
+deletions. If a worker crashes or its result write has an unknown outcome, inspect
+`cleanup_plans`, stop the owning worker, reconcile partial Registry deletions, and
+only then explicitly mark the abandoned plan completed. Never release a claim
+while its worker might still run. Normal browser disconnects still persist the
+execution result using a bounded independent context.
 
 ## Registry garbage collection
 

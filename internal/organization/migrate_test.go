@@ -2,6 +2,7 @@ package organization
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -38,8 +39,13 @@ func TestConcurrentMigrationsAndTransactionRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(versions[0].Values) != 1 || string(versions[0].Values[0][0]) != "1" {
+	if len(versions[0].Values) != len(migrations) {
 		t.Fatalf("unexpected versions: %+v", versions)
+	}
+	for i, row := range versions[0].Values {
+		if len(row) != 1 || string(row[0]) != fmt.Sprint(i+1) {
+			t.Fatalf("unexpected migration sequence: %+v", versions)
+		}
 	}
 	_, err = store.write(t.Context(), [][]any{
 		{"INSERT INTO organizations VALUES (?, ?, ?, ?, ?)", "rollback", "Rollback", "", "2026-11-09T00:00:00Z", "2026-11-09T00:00:00Z"},

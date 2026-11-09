@@ -60,8 +60,13 @@ func ImportOrganizations(ctx context.Context, source []Organization, endpoints [
 		if err != nil {
 			return report, err
 		}
-		if len(versions[0].Values) != 1 || len(versions[0].Values[0]) != 1 || string(versions[0].Values[0][0]) != "1" {
-			return report, errors.New("legacy import requires target schema version 1")
+		if len(versions[0].Values) == 0 || len(versions[0].Values) > len(migrations) {
+			return report, errors.New("unsupported target schema version")
+		}
+		for i, row := range versions[0].Values {
+			if len(row) != 1 || string(row[0]) != fmt.Sprint(i+1) {
+				return report, errors.New("unsupported target schema version sequence")
+			}
 		}
 		target, err = store.List(ctx)
 		if err != nil {

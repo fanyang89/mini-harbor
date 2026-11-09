@@ -16,7 +16,6 @@ Set Compose variables in `.env` beside `compose.yml`, then apply changes with `d
 | `PROXY_HTTPS_PROXY` | Empty | HTTPS proxy used for upstream registry requests |
 | `PROXY_NO_PROXY` | `localhost,127.0.0.1,registry` | Hosts that bypass the network proxy |
 | `RQLITE_URLS` | `http://rqlite:4001` | Comma-separated HTTP(S) origins for nodes in one rqlite cluster |
-| `IMAGE_USAGE_ROOT` | `/var/lib/mini-harbor/image-usage` | Shared directory for manifest pull timestamps |
 | `OIDC_ISSUER` | Empty | OIDC issuer URL; setting it enables authentication |
 | `OIDC_CLIENT_ID` | Empty | OIDC client ID |
 | `OIDC_CLIENT_SECRET` | Empty | OIDC client secret, if required by the provider |
@@ -27,7 +26,12 @@ Set Compose variables in `.env` beside `compose.yml`, then apply changes with `d
 | `OIDC_SESSION_SECRET` | Empty | Secret of at least 32 bytes used to encrypt session cookies |
 | `OIDC_COOKIE_SECURE` | Auto | Whether cookies require HTTPS; defaults to the callback URL scheme |
 
-`IMAGE_USAGE_ROOT` is set directly in `compose.yml`; change its environment and volume mounts there. `RQLITE_URLS` can be overridden in `.env`. Every URL must refer to the same database cluster and have a stable address. The client uses linearizable reads and probes for a quorum-ready endpoint before writes. An uncertain submitted write is not automatically retried.
+`RQLITE_URLS` configures both Web and Gateway and can be overridden in `.env`.
+Every URL must refer to the same database cluster and have a stable address.
+Organizations, manifest pull timestamps, and cleanup plans are stored in rqlite.
+`IMAGE_USAGE_ROOT` is no longer used by live services; import legacy files before
+cutover. The client uses linearizable reads and probes for a quorum-ready endpoint
+before writes. An uncertain submitted write is not automatically retried.
 
 The default deployment runs one rqlite node. Three voting nodes on separate hosts are needed to tolerate one host failure. The current client targets a trusted private rqlite network; database authentication and custom TLS credentials are not configured by this PoC. Do not expose its API publicly.
 

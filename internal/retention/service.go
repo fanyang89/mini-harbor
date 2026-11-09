@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -37,6 +38,12 @@ type Registry interface {
 
 type Usage interface {
 	LastUsed(repository, digest string) (time.Time, bool, error)
+}
+
+type PlanStore interface {
+	SavePlan(context.Context, string, string, time.Time) error
+	ClaimPlan(context.Context, string, time.Time) (string, string, string, bool, error)
+	CompletePlan(context.Context, string, string, time.Time) error
 }
 
 type Candidate struct {
@@ -81,19 +88,24 @@ type storedPlan struct {
 type Service struct {
 	registry Registry
 	usage    Usage
+	shared   PlanStore
 
 	mu    sync.Mutex
 	plans map[string]*storedPlan
 	now   func() time.Time
 }
 
-func New(registry Registry, usage Usage) *Service {
-	return &Service{
+func New(registry Registry, usage Usage, shared ...PlanStore) *Service {
+	s := &Service{
 		registry: registry,
 		usage:    usage,
 		plans:    make(map[string]*storedPlan),
 		now:      time.Now,
 	}
+	if len(shared) > 0 {
+		s.shared = shared[0]
+	}
+	return s
 }
 
 func (s *Service) Preview(ctx context.Context, unusedForDays int) (Preview, error) {
@@ -179,14 +191,27 @@ func (s *Service) Preview(ctx context.Context, unusedForDays int) (Preview, erro
 		preview.LogicalSize += candidate.LogicalSize
 	}
 
-	s.mu.Lock()
-	s.removeExpiredLocked(generatedAt)
-	s.plans[planID] = &storedPlan{Preview: clonePreview(preview)}
-	s.mu.Unlock()
+	if s.shared != nil {
+		data, err := json.Marshal(preview)
+		if err != nil {
+			return Preview{}, err
+		}
+		if err := s.shared.SavePlan(ctx, planID, string(data), expiresAt); err != nil {
+			return Preview{}, err
+		}
+	} else {
+		s.mu.Lock()
+		s.removeExpiredLocked(generatedAt)
+		s.plans[planID] = &storedPlan{Preview: clonePreview(preview)}
+		s.mu.Unlock()
+	}
 	return preview, nil
 }
 
 func (s *Service) Execute(ctx context.Context, planID string) (Execution, error) {
+	if s.shared != nil {
+		return s.executeShared(ctx, planID)
+	}
 	now := s.now().UTC()
 	s.mu.Lock()
 	plan, ok := s.plans[planID]
@@ -212,7 +237,18 @@ func (s *Service) Execute(ctx context.Context, planID string) (Execution, error)
 	candidates := cloneCandidates(plan.Candidates)
 	cutoff := plan.Cutoff
 	s.mu.Unlock()
+	execution := s.executeCandidates(ctx, candidates, cutoff)
+	s.mu.Lock()
+	if plan, ok := s.plans[planID]; ok {
+		stored := cloneExecution(execution)
+		plan.execution = &stored
+		plan.ExpiresAt = s.now().UTC().Add(planLifetime)
+	}
+	s.mu.Unlock()
+	return execution, nil
+}
 
+func (s *Service) executeCandidates(ctx context.Context, candidates []Candidate, cutoff time.Time) Execution {
 	execution := Execution{Results: make([]ItemResult, 0, len(candidates))}
 	for start := 0; start < len(candidates); {
 		end := start + 1
@@ -296,13 +332,44 @@ func (s *Service) Execute(ctx context.Context, planID string) (Execution, error)
 		}
 		start = end
 	}
-	s.mu.Lock()
-	if plan, ok := s.plans[planID]; ok {
-		stored := cloneExecution(execution)
-		plan.execution = &stored
-		plan.ExpiresAt = s.now().UTC().Add(planLifetime)
+	return execution
+}
+
+func (s *Service) executeShared(ctx context.Context, id string) (Execution, error) {
+	preview, result, state, claimed, err := s.shared.ClaimPlan(ctx, id, s.now())
+	if err != nil {
+		return Execution{}, err
 	}
-	s.mu.Unlock()
+	if !claimed {
+		switch state {
+		case "missing":
+			return Execution{}, ErrPlanNotFound
+		case "expired":
+			return Execution{}, ErrPlanExpired
+		case "done":
+			var execution Execution
+			err := json.Unmarshal([]byte(result), &execution)
+			return execution, err
+		default:
+			return Execution{}, ErrPlanUsed
+		}
+	}
+	var plan Preview
+	if err := json.Unmarshal([]byte(preview), &plan); err != nil {
+		return Execution{}, err
+	}
+	execution := s.executeCandidates(ctx, plan.Candidates, plan.Cutoff)
+	data, err := json.Marshal(execution)
+	if err != nil {
+		return Execution{}, err
+	}
+	// Preserve the outcome even if the caller disconnects. Never automatically
+	// release a running claim after an uncertain database response.
+	finish, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	if err := s.shared.CompletePlan(finish, id, string(data), s.now().Add(planLifetime)); err != nil {
+		return Execution{}, err
+	}
 	return execution, nil
 }
 
