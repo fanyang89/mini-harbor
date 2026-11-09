@@ -4,7 +4,7 @@
 
 Mini Harbor uses CNCF Distribution (`registry:3`), a Go API, rqlite via its HTTP SQL API, and a React + TypeScript + Vite UI built with shadcn/ui components.
 
-Requirements: Go 1.26.10 or later, Node.js 24, npm, Docker, Docker Compose, and Task. The application builds with CGO disabled; race-enabled tests require a C compiler.
+Requirements: Go 1.26.10 or later, Node.js 24, npm, Docker, Docker Compose, and Task. The application and standalone migrator build with CGO disabled; race-enabled tests require a C compiler.
 
 Run these commands from the repository root:
 
@@ -34,3 +34,8 @@ SQL/HA probe; Python 3 is required for that command.
 Organization storage is implemented in `internal/organization`. Add explicit,
 idempotent SQL migrations in `migrate.go`; each migration and its version marker
 are committed together. There is no Ent generation or alternate SQLite backend.
+
+The standalone `cmd/migrate` executable imports legacy SQLite organizations.
+Only `internal/legacyimport`, used by this executable, imports the pure-Go SQLite
+driver. See `operations.md` for preview/import commands. Its unit and opt-in
+real-rqlite tests are included in the Go test suite.

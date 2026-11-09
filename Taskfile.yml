@@ -31,7 +31,7 @@ tasks:
     env:
       RQLITE_TESTS: "1"
     cmds:
-      - go test -race ./internal/organization ./internal/httpapi -count=1 -v
+      - go test -race ./cmd/migrate ./internal/legacyimport ./internal/organization ./internal/httpapi -count=1 -v
       - python3 deploy/poc/rqlite/verify.py
 
   build:

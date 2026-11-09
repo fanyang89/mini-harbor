@@ -24,13 +24,97 @@ Back up the persistent volumes before updating. Avoid `docker compose down -v` u
 
 Preserve `registry-data`, `registry-proxy-data`, `mini-harbor-data`, and `rqlite-data`, together with your configuration. Use a consistent backup or storage snapshot; stop writers and the database while taking an offline backup. Verify that the backup can be restored before destructive maintenance. For online database backups, use the rqlite backup API: https://rqlite.io/docs/guides/backup/
 
-## rqlite PoC upgrade boundary
+## Migrate legacy SQLite organizations
 
-This revision replaces the embedded SQLite/Ent organization store with rqlite.
-`DATABASE_PATH` is no longer used. Existing SQLite organization records are **not
-automatically imported**; keep the old database and its backup. Use a fresh test
-deployment for this PoC. An existing installation needs a separately validated
-data import before switching; the registry image data itself is unaffected.
+The rqlite revision replaces the embedded SQLite/Ent organization store.
+`DATABASE_PATH` is no longer used. Import existing organizations with
+the standalone `mini-harbor-migrate` executable (`cmd/migrate`). It is included
+in the application image and does not require Python or a SQLite CLI. The pure-Go
+SQLite driver is linked only into the migration executable, not the web server.
+The importer preserves names, descriptions, and timestamp instants at nanosecond
+precision. It reads the source without SQL writes and retains the original file.
+Only organization metadata is imported; registry images and usage files stay in
+their existing volumes.
+
+For the default local Docker Compose deployment:
+
+1. Stop the **old** web service before replacing its container. Copy the entire
+   metadata directory, including any `mini-harbor.db-wal` and `-shm` companions.
+   Do not copy only the main database while WAL data may exist. Keep organization
+   management writes paused until verification finishes.
+
+   ```sh
+   docker compose stop web
+   mkdir -p data/legacy-sqlite
+   docker compose cp web:/var/lib/mini-harbor/. ./data/legacy-sqlite/
+   ```
+
+   For a customized old `DATABASE_PATH`, copy that database and its companions
+   instead. A consistent SQLite backup is also accepted. A live source is read
+   as one snapshot including committed WAL records, but later source writes are
+   not replicated: stop the old writer before the final import.
+
+2. With the updated checkout, build the image containing the migrator and start
+   rqlite. The migrator initializes a fresh target during import; the web service
+   can remain stopped throughout migration.
+
+   ```sh
+   docker compose build web
+   docker compose up -d rqlite
+   ```
+
+3. Preview the source/target comparison, then import:
+
+   ```sh
+   docker compose run --rm --no-deps \
+     -v "$PWD/data/legacy-sqlite:/legacy:ro" \
+     --entrypoint mini-harbor-migrate web \
+     --source /legacy/mini-harbor.db --dry-run
+
+   docker compose run --rm --no-deps \
+     -v "$PWD/data/legacy-sqlite:/legacy:ro" \
+     --entrypoint mini-harbor-migrate web \
+     --source /legacy/mini-harbor.db
+   ```
+
+   For an existing rqlite cluster, use comma-separated node URLs, or set
+   `RQLITE_URLS`. All URLs must belong to the same cluster. No
+   authentication credentials are configured by this tool.
+
+4. After the JSON report contains `"verified": true`, resume the web service.
+   Check the organization list in the UI and retain the source backup.
+
+   ```sh
+   docker compose up -d rqlite web
+   ```
+
+For host-side use, build the independent entry point and specify reachable node
+URLs (the standard Compose configuration does not publish rqlite's port):
+
+```sh
+mkdir -p data
+CGO_ENABLED=0 go build -o ./data/mini-harbor-migrate ./cmd/migrate
+./data/mini-harbor-migrate --source /path/to/mini-harbor.db \
+  --rqlite-urls http://node1:4001,http://node2:4001,http://node3:4001 --dry-run
+```
+
+The preview reports `source`, `new`, `identical`, `conflicts`, and whether the
+target needs schema initialization (`initialize`). Import uses one data
+transaction: identical rows are accepted, unrelated target rows are preserved,
+and same-name rows with different content cause failure without overwriting
+them. A transaction-level guard also rejects conflicts introduced after preview.
+There is no force/overwrite option. Fix the source or reconcile the target
+deliberately before retrying.
+
+If the write response is lost, the tool does **not** resend it. Run `--dry-run`
+again: an already-committed import will report identical rows, and rerunning the
+import is safe when those rows still match. A successful import is followed by
+a linearizable read-back comparison of all source records. Dry runs issue no
+target writes, including on a fresh database. A real import initializes a fresh
+target using the application's versioned migrations before writing records.
+Existing targets must have supported schema version 1. `--timeout` bounds the
+whole operation (default `2m`). Exit code 0 means success, 1 means migration
+failure, and 2 means invalid arguments. The source is never deleted.
 
 An API error saying the write outcome is unknown means the request may have
 committed. Reload the organization before deciding whether to retry. Metadata

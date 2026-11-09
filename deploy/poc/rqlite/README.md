@@ -6,7 +6,7 @@ and a reachable local Docker daemon:
 ```sh
 task poc:rqlite
 # Or without Task:
-RQLITE_TESTS=1 go test -race ./internal/organization ./internal/httpapi -count=1 -v
+RQLITE_TESTS=1 go test -race ./cmd/migrate ./internal/legacyimport ./internal/organization ./internal/httpapi -count=1 -v
 python3 deploy/poc/rqlite/verify.py
 ```
 
@@ -88,9 +88,11 @@ automatic endpoint selection by the same Store, quorum loss, and replica recover
 Unit tests cover ambiguous writes without replay, redirects, HTTP-200 SQL errors,
 omitted zero affected-row counts, read endpoint fallback, and cancellation.
 
-The standalone Python runner remains a database-level probe. Existing SQLite
-import, production database authentication, and complete application HA remain
-outside this PoC. The single initial Go migration is tested; future schema changes
+The standalone Python runner remains a database-level probe. Legacy SQLite import
+is provided by the standalone `cmd/migrate` entry point, with dry-run, repeat-import, timestamp
+precision, target conflict, transaction rollback, and Go Store read-back tests.
+Production database authentication and complete application HA remain outside
+this PoC. The single initial Go migration is tested; future schema changes
 need their own upgrade tests. See `docs/operations.md` before upgrading an existing
 installation.
 

@@ -14,7 +14,8 @@ COPY go.mod go.sum ./
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 RUN GOPROXY="${GOPROXY}" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /mini-harbor ./cmd/server \
-    && GOPROXY="${GOPROXY}" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /mini-harbor-gateway ./cmd/gateway
+    && GOPROXY="${GOPROXY}" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /mini-harbor-gateway ./cmd/gateway \
+    && GOPROXY="${GOPROXY}" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /mini-harbor-migrate ./cmd/migrate
 
 FROM alpine:3.23
 RUN addgroup -S app && adduser -S -G app app \
@@ -23,6 +24,7 @@ RUN addgroup -S app && adduser -S -G app app \
 WORKDIR /app
 COPY --from=server-build /mini-harbor /usr/local/bin/mini-harbor
 COPY --from=server-build /mini-harbor-gateway /usr/local/bin/mini-harbor-gateway
+COPY --from=server-build /mini-harbor-migrate /usr/local/bin/mini-harbor-migrate
 COPY --from=distribution /bin/registry /usr/local/bin/registry
 COPY --from=distribution /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=web-build /src/web/dist ./web

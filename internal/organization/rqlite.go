@@ -40,6 +40,19 @@ type sqlError struct {
 func (e *sqlError) Error() string { return "rqlite SQL: " + e.message }
 
 func Open(ctx context.Context, endpoints ...string) (*Store, error) {
+	s, err := newStore(endpoints)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.migrate(ctx); err != nil {
+		_ = s.Close()
+		return nil, fmt.Errorf("migrate organization database: %w", err)
+	}
+	return s, nil
+}
+
+// newStore connects without schema writes, including for migration previews.
+func newStore(endpoints []string) (*Store, error) {
 	if len(endpoints) == 0 {
 		return nil, errors.New("at least one rqlite endpoint is required")
 	}
@@ -55,10 +68,6 @@ func Open(ctx context.Context, endpoints ...string) (*Store, error) {
 			return nil, errors.New("rqlite endpoints must be HTTP(S) origins without credentials, query, or path")
 		}
 		s.endpoints = append(s.endpoints, strings.TrimRight(u.String(), "/"))
-	}
-	if err := s.migrate(ctx); err != nil {
-		_ = s.Close()
-		return nil, fmt.Errorf("migrate organization database: %w", err)
 	}
 	return s, nil
 }
