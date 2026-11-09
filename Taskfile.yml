@@ -26,6 +26,11 @@ tasks:
       - npm run --prefix web lint
       - npm run --prefix web build
 
+  poc:rqlite:
+    desc: Verify rqlite organization SQL and three-node failover (Docker required)
+    cmds:
+      - python3 deploy/poc/rqlite/verify.py
+
   build:
     desc: Build the production container
     cmds:
