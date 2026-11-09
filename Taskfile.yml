@@ -23,8 +23,14 @@ tasks:
     desc: Run backend and frontend checks
     cmds:
       - go test ./...
+      - task: test:registry
       - npm run --prefix web lint
       - npm run --prefix web build
+
+  test:registry:
+    desc: Verify ordered S3 walks against the pinned Distribution source
+    cmds:
+      - sh scripts/test-registry.sh
 
   poc:rqlite:
     desc: Verify Go organization Store, HTTP API, and rqlite failover (Docker required)

@@ -1,0 +1,22 @@
+diff --git a/registry/storage/driver/s3-aws/s3.go b/registry/storage/driver/s3-aws/s3.go
+--- a/registry/storage/driver/s3-aws/s3.go
++++ b/registry/storage/driver/s3-aws/s3.go
+@@ -1047,17 +1047,7 @@
+ // Walk traverses a filesystem defined within driver, starting
+ // from the given path, calling f on each file
+ func (d *driver) Walk(ctx context.Context, from string, f storagedriver.WalkFn, options ...func(*storagedriver.WalkOptions)) error {
+-	walkOptions := &storagedriver.WalkOptions{}
+-	for _, o := range options {
+-		o(walkOptions)
+-	}
+-
+-	var objectCount int64
+-	if err := d.doWalk(ctx, &objectCount, from, walkOptions.StartAfterHint, f); err != nil {
+-		return err
+-	}
+-
+-	return nil
++	return d.walkOrdered(ctx, from, f, options...)
+ }
+
+ func (d *driver) doWalk(parentCtx context.Context, objectCount *int64, from, startAfter string, f storagedriver.WalkFn) error {

@@ -5,7 +5,17 @@ RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-FROM registry:3 AS distribution
+FROM golang:1.26.10-alpine AS distribution
+WORKDIR /src/distribution
+ADD --checksum=sha256:db8d38f341b7699e516eaa33986814cce3276e75d1df4ac6f77d60e58c688c45 https://codeload.github.com/distribution/distribution/tar.gz/9a8d98b679740cd514aa7e7d84d23d442a5ef54c /tmp/distribution.tar.gz
+RUN tar -xzf /tmp/distribution.tar.gz --strip-components=1 -C /src/distribution
+COPY registry/_distribution/ordered-walk.patch /tmp/ordered-walk.patch
+RUN apk add --no-cache patch && patch --fuzz=0 -p1 < /tmp/ordered-walk.patch
+COPY registry/_distribution/*.go registry/storage/driver/s3-aws/
+RUN go test ./registry/storage/driver/s3-aws -run '^TestOrderedWalk' -count=1 \
+    && CGO_ENABLED=0 go build -trimpath \
+       -ldflags='-s -w -X github.com/distribution/distribution/v3/version.version=v3.1.1-mini-harbor.1' \
+       -o /bin/registry ./cmd/registry
 
 FROM golang:1.26.10-alpine AS server-build
 WORKDIR /src
