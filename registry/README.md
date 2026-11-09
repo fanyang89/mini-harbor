@@ -63,4 +63,11 @@ not part of the candidate instance and is not claimed as successful acceptance.
 
 `task test` passed backend tests, overlay race tests, frontend type checks and
 the frontend build. The Docker `distribution` target also built successfully.
-Production requires a separate image rollout to receive this optimization.
+The subsequent approved production rollout used image `registry-fb1cbdd`, digest
+`sha256:c286511decef3bad2cbba9589f7c73a1cf9f7e0ec97d715ff07a429521fb8cff`.
+All three Registry replicas became Ready. Five HTTPS samples per endpoint
+returned HTTP 200, with medians of 1.177 seconds for the catalog, 1.079 seconds
+for the organization API and 0.014 seconds for homepage HTML. These include the
+production ingress and S3 proxy path; they are not full browser-render timings.
+Post-rollout pagination and all 125 manifest checks passed. The earlier 502 did
+not recur in those organization samples.
