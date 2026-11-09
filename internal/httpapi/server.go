@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,6 +21,7 @@ import (
 	"github.com/fanyang89/mini-harbor/internal/organization"
 	"github.com/fanyang89/mini-harbor/internal/registry"
 	"github.com/fanyang89/mini-harbor/internal/retention"
+	"github.com/maypok86/otter/v2"
 )
 
 var (
@@ -60,8 +60,7 @@ type server struct {
 	imageUsage        ImageUsage
 	retention         *retention.Service
 	imageSlots        chan struct{}
-	catalogMu         sync.Mutex
-	catalogFlight     chan struct{}
+	catalogCache      *otter.Cache[catalogLocalKey, catalogSnapshot]
 	catalogBackground atomic.Bool
 }
 
@@ -79,6 +78,9 @@ func New(client Registry, organizations Organizations, imageUsage ImageUsage, pu
 		publicURL:     publicURL,
 		webRoot:       webRoot,
 		imageSlots:    make(chan struct{}, 4),
+	}
+	if _, ok := organizations.(catalogStore); ok {
+		server.catalogCache = newCatalogCache()
 	}
 	if authentication == nil {
 		authentication = auth.Disabled()

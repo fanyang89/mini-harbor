@@ -69,6 +69,8 @@ func TestBackgroundRefreshSharesLeaseAndServesBoundedStaleData(t *testing.T) {
 	}}
 	a := New(client, store, nil, "registry", t.TempDir(), nil)
 	b := New(client, store, nil, "registry", t.TempDir(), nil)
+	t.Cleanup(a.Close)
+	t.Cleanup(b.Close)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	stopped := make(chan struct{}, 2)

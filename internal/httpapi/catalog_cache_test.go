@@ -61,6 +61,8 @@ func TestCatalogCacheAcrossReplicasRefreshExpiryAndWrite(t *testing.T) {
 	}}
 	store := &testCatalogStore{}
 	a, b := New(client, store, nil, "registry", t.TempDir(), nil), New(client, store, nil, "registry", t.TempDir(), nil)
+	t.Cleanup(a.Close)
+	t.Cleanup(b.Close)
 	for _, h := range []http.Handler{a, b} {
 		response, result := graphTestRequest(t.Context(), h, "GET", cachedQuery, nil)
 		requireGraphOK(t, response, result)
@@ -113,6 +115,7 @@ func TestCatalogCanceledScanDoesNotPublish(t *testing.T) {
 	}}
 	store := &testCatalogStore{}
 	h := New(client, store, nil, "registry", t.TempDir(), nil)
+	t.Cleanup(h.Close)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan struct{})
@@ -156,6 +159,7 @@ func TestCatalogInvalidationFencesRunningScan(t *testing.T) {
 	}}
 	store := &testCatalogStore{}
 	h := New(client, store, nil, "registry", t.TempDir(), nil)
+	t.Cleanup(h.Close)
 	done := make(chan struct{})
 	go func() { graphTestRequest(t.Context(), h, "GET", cachedQuery, nil); close(done) }()
 	<-started

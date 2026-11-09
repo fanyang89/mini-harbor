@@ -72,6 +72,7 @@ func main() {
 	}
 
 	handler := httpapi.New(client, organizations, organizations, publicURL, webRoot, authentication, organizations)
+	defer handler.Close()
 	server := &http.Server{
 		Addr:              listenAddr,
 		Handler:           handler,

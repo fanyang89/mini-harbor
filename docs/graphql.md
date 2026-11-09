@@ -96,6 +96,14 @@ request-local result. Client cancellation stops queued and active Registry work;
 other waiting clients can retry after a canceled leader. Dependency failures
 fail the connection rather than publishing incomplete results; stale 404 catalog
 entries are empty repositories. The cold-scan latency remains a separate limit.
+
+Otter v2 coordinates generation-keyed concurrent loads and retains decoded
+snapshots in a local cache weighted by serialized payload size (4 MiB budget,
+30-second expiry). Every read still checks shared storage before using a local
+snapshot; content-addressed keys distinguish refreshes within one generation.
+Scan results expire immediately locally, so an expired or invalidated shared
+snapshot cannot be resurrected from local memory. Background scheduling and the
+distributed lease remain shared-storage concerns. Shutdown stops Otter's workers.
 `Server-Timing` reports catalog-read duration and `shared-cache`, `stale-cache`,
 or `live-scan` so browser timings can distinguish backend work from transport.
 

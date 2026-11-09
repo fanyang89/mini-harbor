@@ -138,7 +138,7 @@ func (r *graphResolver) catalogImages(ctx context.Context) ([]*graphImage, error
 		start := time.Now()
 		defer func() { request.catalogDuration = time.Since(start) }()
 		request.catalogSource = "live-scan"
-		request.images, request.imagesErr = r.cachedCatalog(ctx, func() ([]*graphImage, error) {
+		request.images, request.imagesErr = r.cachedCatalog(ctx, func(ctx context.Context) ([]*graphImage, error) {
 			names, err := r.catalogRepositories(ctx)
 			if err != nil {
 				return nil, err
