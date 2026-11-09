@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fanyang89/mini-harbor/internal/auth"
@@ -52,18 +53,24 @@ type ImageUsage interface {
 }
 
 type server struct {
-	registry      Registry
-	organizations Organizations
-	publicURL     string
-	webRoot       string
-	imageUsage    ImageUsage
-	retention     *retention.Service
-	imageSlots    chan struct{}
-	catalogMu     sync.Mutex
-	catalogFlight chan struct{}
+	registry          Registry
+	organizations     Organizations
+	publicURL         string
+	webRoot           string
+	imageUsage        ImageUsage
+	retention         *retention.Service
+	imageSlots        chan struct{}
+	catalogMu         sync.Mutex
+	catalogFlight     chan struct{}
+	catalogBackground atomic.Bool
 }
 
-func New(client Registry, organizations Organizations, imageUsage ImageUsage, publicURL, webRoot string, authentication *auth.Authenticator, plans ...retention.PlanStore) http.Handler {
+type Handler struct {
+	http.Handler
+	server *server
+}
+
+func New(client Registry, organizations Organizations, imageUsage ImageUsage, publicURL, webRoot string, authentication *auth.Authenticator, plans ...retention.PlanStore) *Handler {
 	server := &server{
 		registry:      client,
 		organizations: organizations,
@@ -98,7 +105,7 @@ func New(client Registry, organizations Organizations, imageUsage ImageUsage, pu
 	mux.HandleFunc("GET /api/auth/me", authentication.Status)
 	mux.Handle("/api/", authentication.RequireAPI(api))
 	mux.Handle("/", server.web())
-	return securityHeaders(mux)
+	return &Handler{Handler: securityHeaders(mux), server: server}
 }
 
 type organizationResponse struct {

@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"mime"
 	"net/http"
 	"sync"
@@ -29,6 +30,9 @@ type graphRequestKey struct{}
 // catalog scans. Nothing is retained across requests or shared between users.
 type graphRequest struct {
 	fresh            bool
+	background       bool
+	catalogDuration  time.Duration
+	catalogSource    string
 	repositoriesOnce sync.Once
 	repositories     []string
 	repositoriesErr  error
@@ -78,8 +82,13 @@ func (s *server) registerGraphQL(mux *http.ServeMux, authentication *auth.Authen
 			}
 			ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 			defer cancel()
-			ctx = context.WithValue(ctx, graphRequestKey{}, &graphRequest{fresh: r.Header.Get("Cache-Control") == "no-cache"})
-			writeJSON(w, http.StatusOK, schema.Exec(ctx, input.Query, input.OperationName, input.Variables))
+			state := &graphRequest{fresh: r.Header.Get("Cache-Control") == "no-cache"}
+			ctx = context.WithValue(ctx, graphRequestKey{}, state)
+			result := schema.Exec(ctx, input.Query, input.OperationName, input.Variables)
+			if state.catalogDuration > 0 {
+				w.Header().Set("Server-Timing", fmt.Sprintf("catalog;dur=%.1f;desc=%q", float64(state.catalogDuration)/float64(time.Millisecond), state.catalogSource))
+			}
+			writeJSON(w, http.StatusOK, result)
 		}
 	}
 	mux.Handle("GET /graphql", handler(readSchema))

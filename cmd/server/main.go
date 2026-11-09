@@ -71,9 +71,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	handler := httpapi.New(client, organizations, organizations, publicURL, webRoot, authentication, organizations)
 	server := &http.Server{
 		Addr:              listenAddr,
-		Handler:           httpapi.New(client, organizations, organizations, publicURL, webRoot, authentication, organizations),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -83,6 +84,9 @@ func main() {
 	slog.Info("mini-harbor started", "address", listenAddr, "registry", registryURL, "oidc", authentication.Enabled())
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	refreshDone := make(chan struct{})
+	go func() { defer close(refreshDone); handler.RunCatalogRefresh(ctx) }()
+	defer func() { stop(); <-refreshDone }()
 	serverErrors := make(chan error, 1)
 	go func() { serverErrors <- server.ListenAndServe() }()
 	select {

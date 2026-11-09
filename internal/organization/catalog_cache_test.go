@@ -53,6 +53,53 @@ func TestSharedCatalogCacheGenerationAndExpiry(t *testing.T) {
 	if err != nil || payload != "" {
 		t.Fatal(payload, err)
 	}
+	stale, err := b.LoadStaleCatalog(t.Context(), "test")
+	if err != nil || stale != "expired" {
+		t.Fatal("bounded stale snapshot unavailable", stale, err)
+	}
+	if err := a.SaveCatalog(t.Context(), "test", generation, "too old", time.Now().Add(-3*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	stale, err = b.LoadStaleCatalog(t.Context(), "test")
+	if err != nil || stale != "" {
+		t.Fatal("served unbounded stale snapshot", stale, err)
+	}
+	claimed, err := a.ClaimCatalogRefresh(t.Context(), "test", "owner-a")
+	if err != nil || !claimed {
+		t.Fatal("first lease failed", claimed, err)
+	}
+	claimed, err = b.ClaimCatalogRefresh(t.Context(), "test", "owner-b")
+	if err != nil || claimed {
+		t.Fatal("concurrent lease acquired", claimed, err)
+	}
+	if err := b.ReleaseCatalogRefresh(t.Context(), "test", "owner-b"); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = b.ClaimCatalogRefresh(t.Context(), "test", "owner-b")
+	if err != nil || claimed {
+		t.Fatal("wrong owner released lease", claimed, err)
+	}
+	if err := a.ReleaseCatalogRefresh(t.Context(), "test", "owner-a"); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = b.ClaimCatalogRefresh(t.Context(), "test", "owner-b")
+	if err != nil || !claimed {
+		t.Fatal("released lease unavailable", claimed, err)
+	}
+	if _, err := a.write(t.Context(), [][]any{{"UPDATE catalog_refresh_v1 SET expires_at=0 WHERE id=?", "test"}}); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = a.ClaimCatalogRefresh(t.Context(), "test", "owner-c")
+	if err != nil || !claimed {
+		t.Fatal("expired owner lease did not recover", claimed, err)
+	}
+	if err := b.ReleaseCatalogRefresh(t.Context(), "test", "owner-b"); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = b.ClaimCatalogRefresh(t.Context(), "test", "owner-b")
+	if err != nil || claimed {
+		t.Fatal("old owner released replacement lease", claimed, err)
+	}
 	// Cache creation must not advance the durable schema version. Older deployed
 	// Gateway binaries reject unknown versions during startup.
 	results, err := a.query(t.Context(), [][]any{{"SELECT MAX(version) FROM schema_migrations"}})

@@ -15,7 +15,43 @@ func (s *Store) PrepareCatalogCache(ctx context.Context) error {
 		generation INTEGER NOT NULL DEFAULT 0,
 		payload TEXT NOT NULL DEFAULT '',
 		expires_at INTEGER NOT NULL DEFAULT 0
+	)`}, {`CREATE TABLE IF NOT EXISTS catalog_refresh_v1 (
+		id TEXT PRIMARY KEY NOT NULL, owner TEXT NOT NULL, expires_at INTEGER NOT NULL
 	)`}})
+	return err
+}
+
+// Stale browsing data is usable only while bounded background refresh is active.
+// Invalidation clears payload, so management writes never fall back to stale data.
+func (s *Store) LoadStaleCatalog(ctx context.Context, key string) (string, error) {
+	results, err := s.query(ctx, [][]any{{`SELECT payload FROM catalog_cache_v1
+		WHERE id=? AND expires_at > ?`, key, time.Now().Add(-2 * time.Minute).UnixNano()}})
+	if err != nil {
+		return "", err
+	}
+	if len(results[0].Values) == 0 {
+		return "", nil
+	}
+	var payload string
+	if err := json.Unmarshal(results[0].Values[0][0], &payload); err != nil {
+		return "", err
+	}
+	return payload, nil
+}
+
+func (s *Store) ClaimCatalogRefresh(ctx context.Context, key, owner string) (bool, error) {
+	now := time.Now()
+	results, err := s.write(ctx, [][]any{{`INSERT INTO catalog_refresh_v1(id, owner, expires_at) VALUES (?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET owner=excluded.owner, expires_at=excluded.expires_at
+		WHERE catalog_refresh_v1.expires_at <= ?`, key, owner, now.Add(time.Minute).UnixNano(), now.UnixNano()}})
+	if err != nil {
+		return false, err
+	}
+	return results[0].RowsAffected == 1, nil
+}
+
+func (s *Store) ReleaseCatalogRefresh(ctx context.Context, key, owner string) error {
+	_, err := s.write(ctx, [][]any{{"DELETE FROM catalog_refresh_v1 WHERE id=? AND owner=?", key, owner}})
 	return err
 }
 

@@ -68,16 +68,21 @@ and the exact confirmation string `DELETE`.
 ## Cost and cancellation
 
 Completed catalog scans are cached in shared rqlite for 30 seconds after scan
-completion. Pagination, search and sorting reuse that result across all Web
-replicas. Metadata and last-used timestamps can lag during this interval (plus
-scan duration). Registry pushes outside the management API become visible on
-expiry or refresh. Send `Cache-Control: no-cache` to force a new scan; the Web
+completion. The server checks freshness every five seconds and refreshes expired
+snapshots in the background, including while the console is idle. A shared
+60-second owner lease permits only one background scan across Web replicas;
+scans are canceled after 25 seconds and on shutdown. While the worker is active,
+browsing can use an expired snapshot for up to two additional minutes. Thus
+normal requests do not wait for every periodic refresh. Missing, invalidated,
+or older snapshots still require a synchronous scan. Metadata and last-used
+timestamps lag by refresh cadence and scan duration; failures may extend that
+lag to the stale bound. Send `Cache-Control: no-cache` to force a new scan; the Web
 Refresh button does this. Management tag/manifest writes and cleanup execution
 invalidate the shared cache, including legacy REST writes. Generation fencing
 prevents an older in-flight scan from republishing after invalidation.
 
 The cache is disposable, capped at 4 MiB per registry, and stored in a separate
-`catalog_cache_v1` table without changing the durable schema version. Older
+`catalog_cache_v1` table, with leases in `catalog_refresh_v1`, without changing the durable schema version. Older
 Gateway binaries remain compatible. Cache read failures fall back to live
 scans; failed or canceled scans are never cached. Cache invalidation failures
 are logged and bounded by normal expiry. Cleanup preview/execution always read
@@ -85,12 +90,14 @@ live Registry and usage state, never cached browsing data.
 
 Cache misses still scan catalog metadata. A fixed four-worker pool and the
 shared four-query semaphore per Web replica bound repository-image reads.
-Concurrent misses on one replica wait for its in-flight scan; different replicas
-can independently scan on simultaneous cold misses. Aliases share the same
+Concurrent misses on one replica wait for its in-flight scan; foreground cold
+misses on different replicas can independently scan. Aliases share the same
 request-local result. Client cancellation stops queued and active Registry work;
 other waiting clients can retry after a canceled leader. Dependency failures
 fail the connection rather than publishing incomplete results; stale 404 catalog
 entries are empty repositories. The cold-scan latency remains a separate limit.
+`Server-Timing` reports catalog-read duration and `shared-cache`, `stale-cache`,
+or `live-scan` so browser timings can distinguish backend work from transport.
 
 ## Rolling deployment
 

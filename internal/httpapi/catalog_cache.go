@@ -37,13 +37,17 @@ func (r *graphResolver) cachedCatalog(ctx context.Context, build func() ([]*grap
 	if !ok {
 		return build()
 	}
-	fresh := ctx.Value(graphRequestKey{}).(*graphRequest).fresh
+	request := ctx.Value(graphRequestKey{}).(*graphRequest)
+	fresh := request.fresh
 	if fresh {
 		s.invalidateCatalog(ctx)
 	}
 	for {
 		generation, payload, err := store.LoadCatalog(ctx, s.catalogKey())
 		if err != nil {
+			if request.background {
+				return nil, err
+			}
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
@@ -53,7 +57,20 @@ func (r *graphResolver) cachedCatalog(ctx context.Context, build func() ([]*grap
 		if !fresh && payload != "" && len(payload) <= maxCatalogCacheBytes {
 			var images []*graphImage
 			if err := json.Unmarshal([]byte(payload), &images); err == nil && images != nil {
+				request.catalogSource = "shared-cache"
 				return images, nil
+			}
+		}
+		if !fresh && !request.background && s.catalogBackground.Load() {
+			if refreshStore, ok := store.(catalogRefreshStore); ok {
+				stale, err := refreshStore.LoadStaleCatalog(ctx, s.catalogKey())
+				if err == nil && stale != "" && len(stale) <= maxCatalogCacheBytes {
+					var images []*graphImage
+					if json.Unmarshal([]byte(stale), &images) == nil && images != nil {
+						request.catalogSource = "stale-cache"
+						return images, nil
+					}
+				}
 			}
 		}
 		s.catalogMu.Lock()
@@ -80,12 +97,37 @@ func (r *graphResolver) cachedCatalog(ctx context.Context, build func() ([]*grap
 		// flight slot. Recheck both payload and fencing generation before work.
 		generation, payload, err = store.LoadCatalog(ctx, s.catalogKey())
 		if err != nil {
+			if request.background {
+				return nil, err
+			}
 			return build()
 		}
 		if !fresh && payload != "" && len(payload) <= maxCatalogCacheBytes {
 			var images []*graphImage
 			if json.Unmarshal([]byte(payload), &images) == nil && images != nil {
+				request.catalogSource = "shared-cache"
 				return images, nil
+			}
+		}
+		if request.background {
+			release, claimed, err := claimCatalogRefresh(ctx, store.(catalogRefreshStore), s.catalogKey())
+			if err != nil {
+				return nil, err
+			}
+			if !claimed {
+				return nil, nil
+			}
+			defer release()
+			// A different replica can publish before this lease was acquired.
+			generation, payload, err = store.LoadCatalog(ctx, s.catalogKey())
+			if err != nil {
+				return nil, err
+			}
+			if payload != "" && len(payload) <= maxCatalogCacheBytes {
+				var images []*graphImage
+				if json.Unmarshal([]byte(payload), &images) == nil && images != nil {
+					return images, nil
+				}
 			}
 		}
 		images, err := build()

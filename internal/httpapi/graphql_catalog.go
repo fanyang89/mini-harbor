@@ -135,6 +135,9 @@ func (r *graphResolver) Repositories(ctx context.Context, args struct {
 func (r *graphResolver) catalogImages(ctx context.Context) ([]*graphImage, error) {
 	request := ctx.Value(graphRequestKey{}).(*graphRequest)
 	request.imagesOnce.Do(func() {
+		start := time.Now()
+		defer func() { request.catalogDuration = time.Since(start) }()
+		request.catalogSource = "live-scan"
 		request.images, request.imagesErr = r.cachedCatalog(ctx, func() ([]*graphImage, error) {
 			names, err := r.catalogRepositories(ctx)
 			if err != nil {
