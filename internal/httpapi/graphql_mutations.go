@@ -62,6 +62,7 @@ func (r *graphResolver) PutTag(ctx context.Context, args struct {
 	Repository, Source, Target string
 	Overwrite                  bool
 }) (*graphImage, error) {
+	defer r.server.invalidateCatalog(ctx)
 	if !validRepository(args.Repository) || !tagPattern.MatchString(args.Source) || !tagPattern.MatchString(args.Target) {
 		return nil, invalidGraph("Invalid repository or tag")
 	}
@@ -73,6 +74,7 @@ func (r *graphResolver) PutTag(ctx context.Context, args struct {
 	return imageGraph(args.Repository, image), nil
 }
 func (r *graphResolver) DeleteTag(ctx context.Context, args struct{ Repository, Tag string }) (bool, error) {
+	defer r.server.invalidateCatalog(ctx)
 	if !validRepository(args.Repository) || !tagPattern.MatchString(args.Tag) {
 		return false, invalidGraph("Invalid repository or tag")
 	}
@@ -80,6 +82,7 @@ func (r *graphResolver) DeleteTag(ctx context.Context, args struct{ Repository, 
 	return err == nil, graphRegistryError(err)
 }
 func (r *graphResolver) DeleteManifest(ctx context.Context, args struct{ Repository, Digest string }) (bool, error) {
+	defer r.server.invalidateCatalog(ctx)
 	if !validRepository(args.Repository) || !digestPattern.MatchString(args.Digest) {
 		return false, invalidGraph("Manifest deletion requires a digest")
 	}
@@ -141,6 +144,7 @@ func (r *graphResolver) PreviewImageGC(ctx context.Context, args struct{ UnusedF
 	return result, nil
 }
 func (r *graphResolver) ExecuteImageGC(ctx context.Context, args struct{ PlanID, Confirmation string }) (*graphGCExecution, error) {
+	defer r.server.invalidateCatalog(ctx)
 	if args.PlanID == "" || args.Confirmation != "DELETE" {
 		return nil, invalidGraph("Plan ID and DELETE confirmation are required")
 	}

@@ -38,6 +38,11 @@ func main() {
 	}
 	databaseContext, cancelDatabase := context.WithTimeout(context.Background(), 15*time.Second)
 	organizations, err := organization.Open(databaseContext, databaseURLs...)
+	if err == nil {
+		if cacheErr := organizations.PrepareCatalogCache(databaseContext); cacheErr != nil {
+			slog.Warn("catalog cache unavailable; using live scans", "error", cacheErr)
+		}
+	}
 	cancelDatabase()
 	if err != nil {
 		slog.Error("open organization database", "error", err)

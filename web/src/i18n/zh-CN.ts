@@ -25,7 +25,7 @@ export const zhCN: Translation = {
   sessionError: "无法验证会话",
   registryError: "无法连接 Registry",
   imagesError: "无法加载镜像标签",
-  imagePageProgress: "已显示 {loaded}/{total} 个匹配镜像，搜索和排序覆盖全部仓库。",
+  imagePageProgress: "已显示 {loaded}/{total} 个匹配镜像。结果短时缓存，刷新获取最新数据。",
   loadMore: "加载更多",
   orgsError: "无法加载组织",
   saveTagError: "无法保存标签",

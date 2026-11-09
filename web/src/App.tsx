@@ -129,7 +129,7 @@ function App() {
     return () => window.clearTimeout(timeout)
   }, [search])
 
-  const loadImages = useCallback(async (after = "") => {
+  const loadImages = useCallback(async (after = "", fresh = false) => {
     if (activeView.current !== "images") return
     imageRequest.current?.abort()
     const controller = new AbortController()
@@ -144,7 +144,7 @@ function App() {
       setImagePage({ endCursor: "", hasNextPage: false })
     }
     try {
-      const payload = await api.catalog(imageSearch, imageSort, sortDirection, after, signal)
+      const payload = await api.catalog(imageSearch, imageSort, sortDirection, after, signal, fresh)
       if (signal.aborted) return
       setStatus(payload.status)
       setImages((current) => {
@@ -310,7 +310,7 @@ function App() {
 
   const refresh = async () => {
     if (view === "images") {
-      await loadImages()
+      await loadImages("", true)
     } else {
       await loadOrganizations()
     }

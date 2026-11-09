@@ -135,57 +135,59 @@ func (r *graphResolver) Repositories(ctx context.Context, args struct {
 func (r *graphResolver) catalogImages(ctx context.Context) ([]*graphImage, error) {
 	request := ctx.Value(graphRequestKey{}).(*graphRequest)
 	request.imagesOnce.Do(func() {
-		names, err := r.catalogRepositories(ctx)
-		if err != nil {
-			request.imagesErr = err
-			return
-		}
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
-		groups := make([][]*graphImage, len(names))
-		jobs := make(chan int)
-		var workers sync.WaitGroup
-		var failed sync.Once
-		// Fixed worker count avoids one waiting goroutine per repository. The
-		// existing per-server semaphore also bounds all simultaneous requests.
-		for range min(4, len(names)) {
-			workers.Go(func() {
-				for i := range jobs {
-					images, err := r.server.repositoryImages(ctx, names[i])
-					if e, ok := errors.AsType[*registry.Error](err); ok && e.StatusCode == http.StatusNotFound {
-						continue
-					}
-					if err != nil {
-						failed.Do(func() { request.imagesErr = graphRegistryError(err); cancel() })
-						return
-					}
-					for _, image := range images {
-						groups[i] = append(groups[i], imageGraph(names[i], image))
-					}
-				}
-			})
-		}
-	feed:
-		for i := range names {
-			select {
-			case jobs <- i:
-			case <-ctx.Done():
-				break feed
+		request.images, request.imagesErr = r.cachedCatalog(ctx, func() ([]*graphImage, error) {
+			names, err := r.catalogRepositories(ctx)
+			if err != nil {
+				return nil, err
 			}
-		}
-		close(jobs)
-		workers.Wait()
-		if request.imagesErr != nil {
-			return
-		}
-		if err := ctx.Err(); err != nil {
-			request.imagesErr = err
-			return
-		}
-		request.images = []*graphImage{}
-		for _, group := range groups {
-			request.images = append(request.images, group...)
-		}
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			groups := make([][]*graphImage, len(names))
+			jobs := make(chan int)
+			var workers sync.WaitGroup
+			var failed sync.Once
+			var scanErr error
+			// Fixed worker count avoids one waiting goroutine per repository. The
+			// existing per-server semaphore also bounds all simultaneous requests.
+			for range min(4, len(names)) {
+				workers.Go(func() {
+					for i := range jobs {
+						images, err := r.server.repositoryImages(ctx, names[i])
+						if e, ok := errors.AsType[*registry.Error](err); ok && e.StatusCode == http.StatusNotFound {
+							continue
+						}
+						if err != nil {
+							failed.Do(func() { scanErr = graphRegistryError(err); cancel() })
+							return
+						}
+						for _, image := range images {
+							groups[i] = append(groups[i], imageGraph(names[i], image))
+						}
+					}
+				})
+			}
+		feed:
+			for i := range names {
+				select {
+				case jobs <- i:
+				case <-ctx.Done():
+					break feed
+				}
+			}
+			close(jobs)
+			workers.Wait()
+			if scanErr != nil {
+				return nil, scanErr
+			}
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			images := []*graphImage{}
+			for _, group := range groups {
+				images = append(images, group...)
+			}
+			return images, nil
+		})
 	})
 	return request.images, request.imagesErr
 }

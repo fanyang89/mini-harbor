@@ -28,6 +28,7 @@ type graphRequestKey struct{}
 // Request-local memoization prevents aliases and sibling resolvers from repeating
 // catalog scans. Nothing is retained across requests or shared between users.
 type graphRequest struct {
+	fresh            bool
 	repositoriesOnce sync.Once
 	repositories     []string
 	repositoriesErr  error
@@ -77,7 +78,7 @@ func (s *server) registerGraphQL(mux *http.ServeMux, authentication *auth.Authen
 			}
 			ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 			defer cancel()
-			ctx = context.WithValue(ctx, graphRequestKey{}, &graphRequest{})
+			ctx = context.WithValue(ctx, graphRequestKey{}, &graphRequest{fresh: r.Header.Get("Cache-Control") == "no-cache"})
 			writeJSON(w, http.StatusOK, schema.Exec(ctx, input.Query, input.OperationName, input.Variables))
 		}
 	}

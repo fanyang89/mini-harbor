@@ -121,11 +121,11 @@ const imageFields = `repository tag digest mediaType size layers created lastUse
   platforms { architecture os variant }`
 const organizationFields = "name displayName description createdAt updatedAt repositoryCount"
 
-async function graphql<T>(query: string, variables: Record<string, unknown>, mutation = false, signal?: AbortSignal): Promise<T> {
+async function graphql<T>(query: string, variables: Record<string, unknown>, mutation = false, signal?: AbortSignal, fresh = false): Promise<T> {
   const payload = { query, variables }
   const result = await request<{ data?: T; errors?: { message: string; extensions?: { status?: number } }[] }>(
     mutation ? "/graphql" : `/graphql?${new URLSearchParams({ query, variables: JSON.stringify(variables) })}`,
-    mutation ? { method: "POST", body: JSON.stringify(payload), signal } : { signal },
+    mutation ? { method: "POST", body: JSON.stringify(payload), signal } : { signal, headers: fresh ? { "Cache-Control": "no-cache" } : undefined },
   )
   if (result.errors?.length) {
     throw new ApiRequestError(result.errors.map((error) => error.message).join("; "), result.errors[0].extensions?.status ?? 500)
@@ -150,14 +150,14 @@ export const api = {
       { input: { name, displayName, description } }, true)).updateOrganization,
   deleteOrganization: (name: string) =>
     graphql(`mutation DeleteOrganization($name: String!) { deleteOrganization(name: $name) }`, { name }, true),
-  catalog: (search: string, sort: "lastUsed" | "created" | "size", direction: "asc" | "desc", after = "", signal?: AbortSignal) =>
+  catalog: (search: string, sort: "lastUsed" | "created" | "size", direction: "asc" | "desc", after = "", signal?: AbortSignal, fresh = false) =>
     graphql<{ status: RegistryStatus; images: ImageConnection }>(
       `query Catalog($filter: ImageFilter!, $sort: ImageSort!, $direction: SortDirection!, $after: String!) {
         status { online registry apiVersion }
         images(first: 50, after: $after, filter: $filter, sort: $sort, direction: $direction) {
           nodes { ${imageFields} } totalCount pageInfo { endCursor hasNextPage }
         }
-      }`, { filter: { search }, sort: { lastUsed: "LAST_USED", created: "CREATED", size: "SIZE" }[sort], direction: direction.toUpperCase(), after }, false, signal),
+      }`, { filter: { search }, sort: { lastUsed: "LAST_USED", created: "CREATED", size: "SIZE" }[sort], direction: direction.toUpperCase(), after }, false, signal, fresh),
   putTag: async (repository: string, source: string, target: string, overwrite = false) =>
     (await graphql<{ putTag: Image }>(
       `mutation PutTag($repository: String!, $source: String!, $target: String!, $overwrite: Boolean!) {

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fanyang89/mini-harbor/internal/auth"
@@ -58,6 +59,8 @@ type server struct {
 	imageUsage    ImageUsage
 	retention     *retention.Service
 	imageSlots    chan struct{}
+	catalogMu     sync.Mutex
+	catalogFlight chan struct{}
 }
 
 func New(client Registry, organizations Organizations, imageUsage ImageUsage, publicURL, webRoot string, authentication *auth.Authenticator, plans ...retention.PlanStore) http.Handler {
@@ -296,6 +299,9 @@ func (s *server) repositories(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) repository(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
+		defer s.invalidateCatalog(r.Context())
+	}
 	rest := strings.TrimPrefix(r.URL.Path, "/api/repositories/")
 	switch {
 	case strings.HasSuffix(rest, "/tags"):
@@ -418,6 +424,7 @@ func (s *server) previewImageGC(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) executeImageGC(w http.ResponseWriter, r *http.Request) {
+	defer s.invalidateCatalog(r.Context())
 	var input struct {
 		PlanID       string `json:"planId"`
 		Confirmation string `json:"confirmation"`

@@ -13,6 +13,10 @@ have not been loaded in the browser. A search ending in `/` selects that
 repository prefix. Changing search or sort resets pagination; refreshing starts
 a new load. Select-all applies only to displayed rows.
 
+Completed scans are shared between Web replicas for 30 seconds. The Refresh
+button bypasses this cache. Management writes invalidate it; external Registry
+pushes and pull timestamps may take a cache interval plus scan time to appear.
+
 Switching to Organizations cancels unfinished image requests and loads only
 organization data. Management queries and writes use [GraphQL](graphql.md).
 Docker/OCI clients continue to use the standard Registry `/v2/` API.

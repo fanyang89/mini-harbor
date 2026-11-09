@@ -47,7 +47,8 @@ of GraphQL's 32-bit `Int`.
 
 Cursors are stateless keyset positions bound to the normalized filter and sort.
 They work across Web replicas without sticky sessions. Changing filter or sort
-requires a new cursor. Each request reads live state, not a pinned snapshot:
+requires a new cursor. Requests may use a short-lived shared catalog cache,
+not a cursor-pinned snapshot:
 concurrent pushes, deletions, or usage updates can move images between pages.
 Refresh to restart; the Web console deduplicates displayed repository/tag pairs.
 
@@ -66,14 +67,30 @@ and the exact confirmation string `DELETE`.
 
 ## Cost and cancellation
 
-Pagination limits browser payloads, not the Registry metadata work needed for
-global sorting/search. Each image connection request currently scans catalog
-metadata. A fixed four-worker pool and the shared four-query semaphore per Web
-replica bound repository-image reads. Aliases and sibling fields share one
-request-local catalog scan; no persistent index or cross-request cache is used.
-Client cancellation propagates to queued and active Registry work. A dependency
-failure fails the connection instead of publishing an incomplete global result;
-stale 404 catalog entries are treated as empty repositories.
+Completed catalog scans are cached in shared rqlite for 30 seconds after scan
+completion. Pagination, search and sorting reuse that result across all Web
+replicas. Metadata and last-used timestamps can lag during this interval (plus
+scan duration). Registry pushes outside the management API become visible on
+expiry or refresh. Send `Cache-Control: no-cache` to force a new scan; the Web
+Refresh button does this. Management tag/manifest writes and cleanup execution
+invalidate the shared cache, including legacy REST writes. Generation fencing
+prevents an older in-flight scan from republishing after invalidation.
+
+The cache is disposable, capped at 4 MiB per registry, and stored in a separate
+`catalog_cache_v1` table without changing the durable schema version. Older
+Gateway binaries remain compatible. Cache read failures fall back to live
+scans; failed or canceled scans are never cached. Cache invalidation failures
+are logged and bounded by normal expiry. Cleanup preview/execution always read
+live Registry and usage state, never cached browsing data.
+
+Cache misses still scan catalog metadata. A fixed four-worker pool and the
+shared four-query semaphore per Web replica bound repository-image reads.
+Concurrent misses on one replica wait for its in-flight scan; different replicas
+can independently scan on simultaneous cold misses. Aliases share the same
+request-local result. Client cancellation stops queued and active Registry work;
+other waiting clients can retry after a canceled leader. Dependency failures
+fail the connection rather than publishing incomplete results; stale 404 catalog
+entries are empty repositories. The cold-scan latency remains a separate limit.
 
 ## Rolling deployment
 
