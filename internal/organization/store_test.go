@@ -1,19 +1,20 @@
 package organization
 
 import (
-	"context"
 	"errors"
-	"path/filepath"
 	"testing"
+
+	"github.com/fanyang89/mini-harbor/internal/testutil"
 )
 
 func TestStoreCRUDAndPersistence(t *testing.T) {
-	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "mini-harbor.db")
-	store, err := Open(ctx, path)
+	ctx := t.Context()
+	cluster := testutil.StartRqlite(t, 1)
+	store, err := Open(ctx, cluster.URLs...)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 
 	created, err := store.Create(ctx, "platform", "Platform", "Shared platform images")
 	if err != nil {
@@ -37,7 +38,10 @@ func TestStoreCRUDAndPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store, err = Open(ctx, path)
+	testutil.Docker(t, "kill", "--signal=KILL", cluster.Nodes[0])
+	cluster.Restart(t, 0)
+	testutil.Wait(t, "single-node restart", func() bool { return cluster.Leader() == 0 })
+	store, err = Open(ctx, cluster.URLs...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,6 +58,12 @@ func TestStoreCRUDAndPersistence(t *testing.T) {
 	}
 	if _, err := store.Get(ctx, "platform"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("get deleted error = %v", err)
+	}
+	if _, err := store.Update(ctx, "missing", "Missing", ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("update missing error = %v", err)
+	}
+	if err := store.Delete(ctx, "missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("delete missing error = %v", err)
 	}
 }
 

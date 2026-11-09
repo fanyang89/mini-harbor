@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -22,8 +21,8 @@ func main() {
 	publicURL := getenv("REGISTRY_PUBLIC_URL", "localhost:5000")
 	listenAddr := getenv("LISTEN_ADDR", ":8080")
 	webRoot := getenv("WEB_ROOT", "web/dist")
-	databasePath := getenv("DATABASE_PATH", "data/mini-harbor.db")
-	imageUsageRoot := getenv("IMAGE_USAGE_ROOT", filepath.Join(filepath.Dir(databasePath), "image-usage"))
+	databaseURLs := splitCSV(getenv("RQLITE_URLS", "http://localhost:4001"))
+	imageUsageRoot := getenv("IMAGE_USAGE_ROOT", "data/image-usage")
 	redirectURL := os.Getenv("OIDC_REDIRECT_URL")
 	cookieSecure, err := strconv.ParseBool(getenv("OIDC_COOKIE_SECURE", strconv.FormatBool(strings.HasPrefix(redirectURL, "https://"))))
 	if err != nil {
@@ -37,7 +36,7 @@ func main() {
 		os.Exit(1)
 	}
 	databaseContext, cancelDatabase := context.WithTimeout(context.Background(), 15*time.Second)
-	organizations, err := organization.Open(databaseContext, databasePath)
+	organizations, err := organization.Open(databaseContext, databaseURLs...)
 	cancelDatabase()
 	if err != nil {
 		slog.Error("open organization database", "error", err)

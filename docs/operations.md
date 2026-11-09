@@ -22,7 +22,20 @@ Back up the persistent volumes before updating. Avoid `docker compose down -v` u
 
 ## Backups
 
-Preserve `registry-data`, `registry-proxy-data`, and `mini-harbor-data`, together with your configuration. Use a consistent backup or storage snapshot; stop writers while taking an offline backup. Verify that the backup can be restored before destructive maintenance.
+Preserve `registry-data`, `registry-proxy-data`, `mini-harbor-data`, and `rqlite-data`, together with your configuration. Use a consistent backup or storage snapshot; stop writers and the database while taking an offline backup. Verify that the backup can be restored before destructive maintenance. For online database backups, use the rqlite backup API: https://rqlite.io/docs/guides/backup/
+
+## rqlite PoC upgrade boundary
+
+This revision replaces the embedded SQLite/Ent organization store with rqlite.
+`DATABASE_PATH` is no longer used. Existing SQLite organization records are **not
+automatically imported**; keep the old database and its backup. Use a fresh test
+deployment for this PoC. An existing installation needs a separately validated
+data import before switching; the registry image data itself is unaffected.
+
+An API error saying the write outcome is unknown means the request may have
+committed. Reload the organization before deciding whether to retry. Metadata
+failover does not provide HA for registry storage, gateway caches, usage records,
+or cleanup coordination.
 
 ## Registry garbage collection
 

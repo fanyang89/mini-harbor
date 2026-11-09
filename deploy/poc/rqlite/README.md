@@ -1,14 +1,16 @@
 # rqlite HA proof of concept
 
-Run from the repository root with Python 3 and a reachable local Docker daemon:
+Run from the repository root with Go, a C compiler (for race tests), Python 3,
+and a reachable local Docker daemon:
 
 ```sh
 task poc:rqlite
 # Or without Task:
+RQLITE_TESTS=1 go test -race ./internal/organization ./internal/httpapi -count=1 -v
 python3 deploy/poc/rqlite/verify.py
 ```
 
-The runner uses only the Python standard library. It creates three voting nodes
+The Python runner uses only the Python standard library. It creates three voting nodes
 on a uniquely named Docker network, publishes HTTP on random loopback ports,
 and removes its containers, anonymous volumes, and network on completion or
 failure. The downloaded image stays cached. An uncatchable termination of the
@@ -46,6 +48,15 @@ command to a successful post-failover write and read-back. This includes Docker
 command overhead and readiness sampling; it is one local observation, not an
 RTO guarantee or performance benchmark.
 
+The Go integration run on the same date passed with the race detector enabled.
+The same Store instance recovered from leader failure and committed a new
+organization in **3.19 seconds** in the recorded run. This includes endpoint
+probing and Docker overhead. The full `RQLITE_TESTS=1 go test -race ./... -count=1`
+suite passed, including concurrent startup migrations, transaction rollback,
+unsupported-schema rejection, and the organization HTTP API. CGO-disabled
+application builds, frontend checks, and the Compose rqlite health check also
+passed.
+
 ## Integration conclusions
 
 The tested organization workload is compatible with rqlite's HTTP SQL API and
@@ -70,12 +81,18 @@ Important client details:
 
 ## Scope and remaining verification
 
-This is a database-level feasibility test, not an integrated Mini Harbor HA
-implementation. The SQL represents the organization fields; application-level
-validation, Ent replacement, existing SQLite import, versioned migrations, Go
-error mapping, and automatic client endpoint failover still need implementation
-and integration tests. Repeating `CREATE TABLE IF NOT EXISTS` only verifies
-initial-schema idempotency, not a complete migration system.
+The Go PoC now replaces Ent with the HTTP-backed organization Store and versioned
+SQL migrations. Its real-database tests cover the existing organization HTTP API,
+CRUD and error mapping, single-node process restart, three-node leader failure,
+automatic endpoint selection by the same Store, quorum loss, and replica recovery.
+Unit tests cover ambiguous writes without replay, redirects, HTTP-200 SQL errors,
+omitted zero affected-row counts, read endpoint fallback, and cancellation.
+
+The standalone Python runner remains a database-level probe. Existing SQLite
+import, production database authentication, and complete application HA remain
+outside this PoC. The single initial Go migration is tested; future schema changes
+need their own upgrade tests. See `docs/operations.md` before upgrading an existing
+installation.
 
 All nodes run on one host. Network partitions, concurrent client histories,
 snapshot-based catch-up, disk failure, real power loss, backup restoration,

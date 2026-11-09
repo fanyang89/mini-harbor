@@ -23,6 +23,8 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test ./...
+        env:
+          RQLITE_TESTS: "1"
       - run: go vet ./...
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:

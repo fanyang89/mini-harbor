@@ -14,6 +14,7 @@ import (
 	"github.com/fanyang89/mini-harbor/internal/organization"
 	"github.com/fanyang89/mini-harbor/internal/registry"
 	"github.com/fanyang89/mini-harbor/internal/retention"
+	"github.com/fanyang89/mini-harbor/internal/testutil"
 	"github.com/fanyang89/mini-harbor/internal/usage"
 )
 
@@ -283,7 +284,8 @@ func TestImageGCErrorStatuses(t *testing.T) {
 }
 
 func TestOrganizationCRUD(t *testing.T) {
-	store, err := organization.Open(context.Background(), t.TempDir()+"/mini-harbor.db")
+	cluster := testutil.StartRqlite(t, 1)
+	store, err := organization.Open(t.Context(), cluster.URLs...)
 	if err != nil {
 		t.Fatal(err)
 	}

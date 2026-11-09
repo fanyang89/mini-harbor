@@ -257,6 +257,9 @@ func (s *server) organizationError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "Organization not found")
 	case errors.Is(err, organization.ErrExists):
 		writeError(w, http.StatusConflict, "Organization already exists")
+	case errors.Is(err, organization.ErrOutcomeUnknown):
+		slog.Warn("organization write outcome unknown", "error", err)
+		writeError(w, http.StatusInternalServerError, "Write outcome unknown; reload the organization before retrying")
 	default:
 		slog.Warn("organization operation failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "Organization storage failed")

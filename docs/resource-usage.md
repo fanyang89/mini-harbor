@@ -14,7 +14,7 @@ A running k3s deployment observed over the 24 hours ending **2026-11-06 11:22 UT
 
 These figures come from existing monitoring data, with no synthetic load added: summed container working-set memory and summed 5-minute CPU rates, evaluated at 5-minute intervals over 24 hours. The memory summary includes 287 available samples; the sampled peak can miss shorter spikes. Cluster services, ingress, authentication infrastructure, and disk storage are excluded.
 
-This deployment runs a pre-public-release build, not the latest public commit. The figures describe that deployment's observed workload, not a minimum resource requirement or a capacity benchmark. Usage varies with traffic, image catalog size, and the number of cache sources.
+This deployment runs a pre-public-release build, not the latest public commit. These historical figures predate the rqlite service and exclude its resource usage. The figures describe that deployment's observed workload, not a minimum resource requirement or a capacity benchmark. Usage varies with traffic, image catalog size, and the number of cache sources.
 
 ## Harbor sizing context
 
@@ -31,17 +31,17 @@ Source: Harbor 2.15 installation prerequisites, accessed 2026-11-06: https://goh
 
 ## A smaller stack
 
-**3 containers instead of 9 — one-third the container count of Harbor's standalone stack.** This comparison uses Harbor 2.15.0 with bundled PostgreSQL and Redis, without the optional scanner or metrics exporter. Container count is not a RAM or CPU usage ratio.
+**4 containers instead of 9 in the default single-node configuration.** This comparison uses Harbor 2.15.0 with bundled PostgreSQL and Redis, without the optional scanner or metrics exporter. Container count is not a RAM or CPU usage ratio; a three-node metadata cluster adds two more rqlite containers.
 
 | Runtime component | Mini Harbor | Harbor |
 | --- | --- | --- |
-| Metadata storage | Embedded SQLite | PostgreSQL service |
+| Metadata storage | rqlite service | PostgreSQL service |
 | Redis | Not required | Part of the standard stack |
 | Web console | Static files served by the Go backend | Separate portal service |
 | Background job service | No separate job service | Jobservice |
 | Vulnerability scanning and replication | Not included | Available |
 
-The default Compose stack has three containers: the registry, the cache gateway, and the web/API service. The gateway also runs a Distribution cache process for each configured upstream source. Go and Node.js build tools are used during the image build, not at runtime.
+The default Compose stack has four containers: the registry, the cache gateway, the web/API service, and rqlite. The gateway also runs a Distribution cache process for each configured upstream source. Go and Node.js build tools are used during the image build, not at runtime.
 
 Harbor comparison source: https://github.com/goharbor/harbor/blob/v2.15.0/make/photon/prepare/templates/docker_compose/docker-compose.yml.jinja
 

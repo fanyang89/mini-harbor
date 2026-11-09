@@ -2,7 +2,7 @@
 
 **A lightweight container registry with a web UI and pull-through cache.**
 
-Store, browse, and cache container images on your homelab or small-team server. Standard Docker push/pull, a compact Go backend, and SQLite — no separate database server or Redis.
+Store, browse, and cache container images on your homelab or small-team server. Standard Docker push/pull, a compact Go backend, and rqlite metadata storage — no Redis.
 
 ![Mini Harbor image catalog with search, tags, sizes, and cleanup actions](docs/images/console.png)
 
@@ -10,8 +10,8 @@ Store, browse, and cache container images on your homelab or small-team server. 
 
 ## Why Mini Harbor?
 
-- **Small footprint:** 52.3 MiB average memory across all three application containers in an observed k3s deployment. See [resource usage](docs/resource-usage.md) for measurement scope and Harbor sizing context.
-- **Easy to run:** three containers, Docker Compose, persistent data volumes.
+- **Small footprint:** a compact registry stack. Historical resource measurements predate the rqlite service; see [resource usage](docs/resource-usage.md) for scope and Harbor sizing context.
+- **Easy to run:** four containers, Docker Compose, persistent data volumes.
 - **Image management:** inspect manifests and platforms, copy pull commands, manage tags, and preview stale-image cleanup.
 - **Pull-through caching:** Docker Hub, GHCR, configurable upstream priorities, and fallback.
 - **Simple access:** optional OIDC login and group restrictions for management, with anonymous browsing.

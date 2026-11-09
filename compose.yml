@@ -2,9 +2,19 @@ x-app-build: &app-build
   context: .
   args:
     GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
-    ALPINE_MIRROR: ${ALPINE_MIRROR:-https://mirrors.huaweicloud.com/alpine}
 
 services:
+  rqlite:
+    image: rqlite/rqlite:10.6.0@sha256:a63af1b16b051ed7d8c81b57b4d704d47faaf1c0002f60c8b6bb06a41535644a
+    restart: unless-stopped
+    volumes:
+      - rqlite-data:/rqlite/file
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:4001/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   registry:
     image: registry:3
     restart: unless-stopped
@@ -64,7 +74,7 @@ services:
       LISTEN_ADDR: :8080
       REGISTRY_URL: http://registry:5000
       REGISTRY_PUBLIC_URL: ${REGISTRY_PUBLIC_URL:-localhost:5000}
-      DATABASE_PATH: /var/lib/mini-harbor/mini-harbor.db
+      RQLITE_URLS: ${RQLITE_URLS:-http://rqlite:4001}
       IMAGE_USAGE_ROOT: /var/lib/mini-harbor/image-usage
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
@@ -80,6 +90,8 @@ services:
     volumes:
       - mini-harbor-data:/var/lib/mini-harbor
     depends_on:
+      rqlite:
+        condition: service_healthy
       registry:
         condition: service_healthy
     healthcheck:
@@ -90,6 +102,7 @@ services:
       start_period: 5s
 
 volumes:
+  rqlite-data:
   registry-data:
   registry-proxy-data:
   mini-harbor-data:
