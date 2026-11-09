@@ -128,6 +128,13 @@ Registry service, not a loopback address. OIDC replicas must use the same
 `OIDC_SESSION_SECRET`; sessions and login flow state are encrypted cookies.
 Registry uploads and gateway proxy caches still require their own storage design.
 
+Web handles SIGTERM by draining active requests for up to 25 seconds. On
+Kubernetes, allow endpoint removal to propagate before SIGTERM (the nuke deployment
+uses a ten-second `preStop` delay and 45-second termination grace period). Spread
+replicas across nodes and keep at least two available during voluntary maintenance.
+This handles graceful Pod replacement, not lossless requests during an abrupt
+node or network failure.
+
 Stop the old Gateway before freezing its `image-usage` directory. Preserve a
 complete backup, then use the new image's independent migrator:
 
