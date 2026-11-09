@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/fanyang89/mini-harbor/internal/auth"
@@ -73,9 +76,23 @@ func main() {
 	}
 
 	slog.Info("mini-harbor started", "address", listenAddr, "registry", registryURL, "oidc", authentication.Enabled())
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		slog.Error("server stopped", "error", err)
-		os.Exit(1)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	serverErrors := make(chan error, 1)
+	go func() { serverErrors <- server.ListenAndServe() }()
+	select {
+	case err := <-serverErrors:
+		if !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("server stopped", "error", err)
+			os.Exit(1)
+		}
+	case <-ctx.Done():
+		shutdown, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdown); err != nil {
+			slog.Warn("server shutdown", "error", err)
+			_ = server.Close()
+		}
 	}
 }
 
