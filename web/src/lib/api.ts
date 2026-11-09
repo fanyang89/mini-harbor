@@ -114,11 +114,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  auth: () => request<AuthStatus>("/api/auth/me"),
+  auth: (signal?: AbortSignal) => request<AuthStatus>("/api/auth/me", { signal }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
-  status: () => request<RegistryStatus>("/api/status"),
-  organizations: () =>
-    request<{ organizations: Organization[] }>("/api/organizations"),
+  status: (signal?: AbortSignal) => request<RegistryStatus>("/api/status", { signal }),
+  organizations: (signal?: AbortSignal) =>
+    request<{ organizations: Organization[] }>("/api/organizations", { signal }),
   createOrganization: (name: string, displayName: string, description: string) =>
     request<Organization>("/api/organizations", {
       method: "POST",
@@ -133,8 +133,15 @@ export const api = {
     request<void>(`/api/organizations/${encodeURIComponent(name)}`, {
       method: "DELETE",
     }),
-  repositories: () =>
-    request<{ repositories: string[] }>("/api/repositories"),
+  repositories: (signal?: AbortSignal) =>
+    request<{ repositories: string[] }>("/api/repositories", { signal }),
+  imageBatch: (repositories: string[], signal?: AbortSignal) => {
+    const query = new URLSearchParams()
+    for (const repository of repositories) query.append("repository", repository)
+    return request<{ repositories: { name: string; images: Image[] }[] }>(
+      `/api/images?${query}`, { signal },
+    )
+  },
   images: (repository: string) =>
     request<{ name: string; images: Image[] }>(
       `/api/repositories/${repositoryPath(repository)}/tags`,

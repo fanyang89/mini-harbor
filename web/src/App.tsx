@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
+import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useMatch, useNavigate, useSearchParams } from "react-router"
 import {
   ArrowDown,
@@ -46,7 +46,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { useI18n } from "@/i18n"
-import { api, ApiRequestError, type AuthStatus, type Image, type Organization, type RegistryStatus } from "@/lib/api"
+import { api, type AuthStatus, type Image, type Organization, type RegistryStatus } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 type DeleteMode = "tag" | "manifest"
@@ -91,6 +91,11 @@ function App() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
   const [loadingImages, setLoadingImages] = useState(true)
   const [loadingOrganizations, setLoadingOrganizations] = useState(true)
+  const [imageProgress, setImageProgress] = useState({ loaded: 0, total: 0 })
+  const imageRequest = useRef<AbortController | null>(null)
+  const organizationRequest = useRef<AbortController | null>(null)
+  const activeView = useRef(view)
+  activeView.current = view
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [tagDialogOpen, setTagDialogOpen] = useState(false)
@@ -126,60 +131,89 @@ function App() {
     setSearchParams(nextSearchParams, { replace: true, preventScrollReset: true })
   }
 
-  const loadImages = async () => {
+  const loadImages = useCallback(async () => {
+    if (activeView.current !== "images") return
+    imageRequest.current?.abort()
+    const controller = new AbortController()
+    imageRequest.current = controller
+    const { signal } = controller
     setLoadingImages(true)
     setError("")
+    setImages([])
+    setSelectedKeys(new Set())
+    setImageProgress({ loaded: 0, total: 0 })
     try {
-      const [nextStatus, payload] = await Promise.all([api.status(), api.repositories()])
-      const imageGroups = await Promise.all(
-        payload.repositories.map(async (repository) => {
-          try {
-            const result = await api.images(repository)
-            return result.images.map((image) => ({ ...image, repository }))
-          } catch (cause) {
-            // Catalog entries can outlive repository data after the final manifest is deleted.
-            if (cause instanceof ApiRequestError && cause.status === 404) return []
-            throw cause
-          }
-        }),
-      )
+      const [nextStatus, payload] = await Promise.all([api.status(signal), api.repositories(signal)])
+      if (signal.aborted) return
       setStatus(nextStatus)
-      setImages(imageGroups.flat())
-      setSelectedKeys(new Set())
+      const repositories = [...new Set(payload.repositories)]
+      setImageProgress({ loaded: 0, total: repositories.length })
+      for (let offset = 0; offset < repositories.length; offset += 8) {
+        const batch = await api.imageBatch(repositories.slice(offset, offset + 8), signal)
+        if (signal.aborted) return
+        const next = batch.repositories.flatMap(({ name, images }) =>
+          images.map((image) => ({ ...image, repository: name })),
+        )
+        setImages((current) => [...current, ...next])
+        setImageProgress({ loaded: Math.min(offset + 8, repositories.length), total: repositories.length })
+      }
     } catch (cause) {
+      if (signal.aborted) return
       setError(cause instanceof Error ? cause.message : t("registryError"))
     } finally {
-      setLoadingImages(false)
+      if (!signal.aborted) setLoadingImages(false)
     }
-  }
+  }, [t])
 
-  const loadOrganizations = async () => {
+  const loadOrganizations = useCallback(async () => {
+    if (activeView.current !== "organizations") return
+    organizationRequest.current?.abort()
+    const controller = new AbortController()
+    organizationRequest.current = controller
+    const { signal } = controller
     setLoadingOrganizations(true)
     setError("")
     try {
-      const payload = await api.organizations()
+      const [nextStatus, payload] = await Promise.all([api.status(signal), api.organizations(signal)])
+      if (signal.aborted) return
+      setStatus(nextStatus)
       startTransition(() => setOrganizations(payload.organizations))
     } catch (cause) {
+      if (signal.aborted) return
       setError(cause instanceof Error ? cause.message : t("orgsError"))
     } finally {
-      setLoadingOrganizations(false)
+      if (!signal.aborted) setLoadingOrganizations(false)
     }
-  }
+  }, [t])
 
   useEffect(() => {
+    const controller = new AbortController()
     const initialize = async () => {
       try {
-        const nextIdentity = await api.auth()
+        const nextIdentity = await api.auth(controller.signal)
+        if (controller.signal.aborted) return
         setIdentity(nextIdentity)
-        await Promise.all([loadImages(), loadOrganizations()])
       } catch (cause) {
+        if (controller.signal.aborted) return
         setError(cause instanceof Error ? cause.message : t("sessionError"))
         setLoadingImages(false)
+        setLoadingOrganizations(false)
       }
     }
     void initialize()
+    return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!identity) return
+    if (view === "images") void loadImages()
+    else void loadOrganizations()
+    return () => {
+      imageRequest.current?.abort()
+      organizationRequest.current?.abort()
+    }
+  }, [identity, view, loadImages, loadOrganizations])
 
   useEffect(() => {
     if (!notice) return
@@ -507,6 +541,12 @@ function App() {
         ) : null}
       </div>
 
+      {view === "images" && imageProgress.total > imageProgress.loaded && (
+        <p role="status" className="mb-3 text-xs text-muted-foreground">
+          {t("imageLoadProgress", imageProgress)}
+        </p>
+      )}
+
       <main className="flex flex-1 flex-col gap-4">
         {view === "organizations" ? (
           <OrganizationManager
@@ -526,7 +566,7 @@ function App() {
             onError={setError}
             onNotice={setNotice}
           />
-        ) : loadingImages ? (
+        ) : loadingImages && images.length === 0 ? (
           <SkeletonRows detailed />
         ) : images.length > 0 ? (
           <section aria-label={t("images")} className="overflow-clip rounded-lg border">

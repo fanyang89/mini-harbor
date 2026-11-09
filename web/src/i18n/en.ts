@@ -23,6 +23,7 @@ export const en = {
   sessionError: "Unable to verify your session",
   registryError: "Unable to reach the registry",
   imagesError: "Unable to load image tags",
+  imageLoadProgress: "Loaded {loaded}/{total} repositories. Search and sorting cover loaded images.",
   orgsError: "Unable to load organizations",
   saveTagError: "Unable to save tag",
   deleteError: "Unable to delete image",

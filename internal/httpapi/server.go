@@ -57,6 +57,7 @@ type server struct {
 	webRoot       string
 	imageUsage    ImageUsage
 	retention     *retention.Service
+	imageSlots    chan struct{}
 }
 
 func New(client Registry, organizations Organizations, imageUsage ImageUsage, publicURL, webRoot string, authentication *auth.Authenticator, plans ...retention.PlanStore) http.Handler {
@@ -67,6 +68,7 @@ func New(client Registry, organizations Organizations, imageUsage ImageUsage, pu
 		retention:     retention.New(client, imageUsage, plans...),
 		publicURL:     publicURL,
 		webRoot:       webRoot,
+		imageSlots:    make(chan struct{}, 4),
 	}
 	if authentication == nil {
 		authentication = auth.Disabled()
@@ -79,6 +81,7 @@ func New(client Registry, organizations Organizations, imageUsage ImageUsage, pu
 	api.HandleFunc("PUT /api/organizations/{name}", server.updateOrganization)
 	api.HandleFunc("DELETE /api/organizations/{name}", server.deleteOrganization)
 	api.HandleFunc("GET /api/repositories", server.repositories)
+	api.HandleFunc("GET /api/images", server.imageBatch)
 	api.HandleFunc("POST /api/image-gc/preview", server.previewImageGC)
 	api.HandleFunc("POST /api/image-gc/execute", server.executeImageGC)
 	api.HandleFunc("/api/repositories/", server.repository)
@@ -366,26 +369,10 @@ func (s *server) repository(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) images(w http.ResponseWriter, r *http.Request, repository string) {
-	images, err := s.registry.Images(r.Context(), repository)
+	images, err := s.repositoryImages(r.Context(), repository)
 	if err != nil {
 		s.registryError(w, err)
 		return
-	}
-	if images == nil {
-		images = []registry.Image{}
-	}
-	if s.imageUsage != nil {
-		for i := range images {
-			lastUsed, ok, err := s.imageUsage.LastUsed(repository, images[i].Digest)
-			if err != nil {
-				slog.Warn("read image usage", "repository", repository, "digest", images[i].Digest, "error", err)
-				writeError(w, http.StatusInternalServerError, "Image usage storage failed")
-				return
-			}
-			if ok {
-				images[i].LastUsed = lastUsed.UTC().Format(time.RFC3339Nano)
-			}
-		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"name": repository, "images": images})
 }
@@ -478,6 +465,10 @@ func (s *server) retentionError(w http.ResponseWriter, err error) {
 }
 
 func (s *server) registryError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errImageUsage) {
+		writeError(w, http.StatusInternalServerError, errImageUsage.Error())
+		return
+	}
 	status := http.StatusBadGateway
 	var registryErr *registry.Error
 	if errors.As(err, &registryErr) {
