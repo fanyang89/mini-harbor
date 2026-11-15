@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -25,10 +26,19 @@ func TestSIGTERMDrainsActiveRequest(t *testing.T) {
 	}
 	entered, release := make(chan struct{}), make(chan struct{})
 	registry := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Background refresh must not signal that the foreground request entered.
+		if r.URL.Path == "/v2/_catalog" {
+			io.WriteString(w, `{"repositories":[]}`)
+			return
+		}
+		if r.URL.Path != "/v2/drain-test/tags/list" {
+			http.NotFound(w, r)
+			return
+		}
 		close(entered)
 		<-release
-		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"repositories":[]}`)
+		io.WriteString(w, `{"name":"drain-test","tags":[]}`)
 	}))
 	defer registry.Close()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -54,10 +64,13 @@ func TestSIGTERMDrainsActiveRequest(t *testing.T) {
 	})
 	done := make(chan error, 1)
 	go func() {
-		r, err := client.Get("http://" + address + "/api/repositories")
+		r, err := client.Get("http://" + address + "/api/repositories/drain-test/tags")
 		if err == nil {
 			_, err = io.ReadAll(r.Body)
 			r.Body.Close()
+			if err == nil && r.StatusCode != http.StatusOK {
+				err = fmt.Errorf("unexpected response status: %s", r.Status)
+			}
 		}
 		done <- err
 	}()
